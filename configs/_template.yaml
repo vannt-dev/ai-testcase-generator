@@ -1,0 +1,31 @@
+# =============================================================
+# TEMPLATE CONFIG — copy file này thành configs/<ten_project>.yaml
+# rồi điền lại thông tin để áp dụng cho project mới.
+# =============================================================
+
+project_name: "Tên project"
+platform: [web]   # có thể là [web], [ios, android], hoặc [web, ios, android]
+
+# ID format cho test case, {MODULE} và {NUMBER} sẽ được AI tự thay thế
+test_id_format: "TC_{MODULE}_{NUMBER}"
+
+# Các loại test case bắt buộc phải cân nhắc khi sinh
+test_types_required:
+  - positive
+  - negative
+  - edge_case
+  - ui_ux
+  - compatibility
+
+# Các rule nghiệp vụ đặc thù của project — càng chi tiết, AI sinh case
+# càng chính xác, tránh phải sửa lại nhiều
+domain_rules:
+  - "Ví dụ: Số điện thoại VN gồm 10 số, bắt đầu bằng 0"
+  - "Ví dụ: Mật khẩu tối thiểu 8 ký tự, có ít nhất 1 chữ hoa và 1 số"
+
+# Giải thích các thuật ngữ riêng của hệ thống để AI hiểu đúng ngữ cảnh
+glossary:
+  Vi_du_thuat_ngu: "Giải thích ý nghĩa"
+
+# Ghi chú thêm (tuỳ chọn) — bất kỳ ngữ cảnh nào khác muốn AI biết
+notes: ""

@@ -1,0 +1,26 @@
+project_name: "E-commerce App Demo"
+platform: [web, ios, android]
+
+test_id_format: "TC_{MODULE}_{NUMBER}"
+
+test_types_required:
+  - positive
+  - negative
+  - edge_case
+  - ui_ux
+  - compatibility
+  - security
+
+domain_rules:
+  - "Số điện thoại VN: 10 số, bắt đầu bằng 0"
+  - "Giá tiền hiển thị dạng: 1.000.000 VNĐ"
+  - "Session hết hạn sau 30 phút không hoạt động"
+  - "Mật khẩu tối thiểu 8 ký tự, có ít nhất 1 chữ hoa, 1 số, 1 ký tự đặc biệt"
+  - "Giỏ hàng tối đa 50 sản phẩm khác nhau"
+
+glossary:
+  SKU: "Mã định danh sản phẩm"
+  Voucher: "Mã giảm giá, áp dụng theo điều kiện đơn hàng"
+  Flash_sale: "Chương trình giảm giá theo khung giờ giới hạn"
+
+notes: "Ưu tiên test kỹ luồng thanh toán và áp dụng voucher vì đây là core business flow."

@@ -52,6 +52,8 @@ def test_generate_flow_shows_editor_and_no_exception(monkeypatch):
     assert not at.exception
     assert at.session_state["last_result"]["summary"]["total"] == 1
     assert "test_case_editor" in at.session_state
+    assert at.session_state["last_config"]["project_name"] == at.session_state["last_project_name"]
+    assert at.session_state["last_requirement_text"] == "As a user, I want to log in with OTP"
 
 
 def test_generate_flow_records_history(monkeypatch):

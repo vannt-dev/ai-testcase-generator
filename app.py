@@ -141,6 +141,8 @@ if generate_btn:
     st.session_state.pop("test_case_editor", None)
     st.session_state["last_result"] = result
     st.session_state["last_project_name"] = config["project_name"]
+    st.session_state["last_config"] = config
+    st.session_state["last_requirement_text"] = requirement_text
 
     history = st.session_state.setdefault("history", [])
     history.append(

@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Test Case Generator</title>
+<meta name="description" content="Automatically generate test cases from a requirement/user story with Claude — built for manual testers, exports a ready-to-use Excel file.">
+<style>
+  :root{
+    --bg:#f7f7f5;
+    --bg-alt:#ffffff;
+    --text:#1f2328;
+    --text-dim:#57606a;
+    --border:#e3e2df;
+    --accent:#b45309;
+    --accent-soft:#fdf0e2;
+    --code-bg:#1f2328;
+    --code-text:#f7f7f5;
+    --high:#ffc7ce;
+    --high-text:#8a1c22;
+    --medium:#ffeb9c;
+    --medium-text:#7a5b00;
+    --low:#c6efce;
+    --low-text:#1c6b34;
+    --shadow: 0 1px 2px rgba(31,35,40,.06), 0 8px 24px rgba(31,35,40,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#15171a;
+      --bg-alt:#1c1f23;
+      --text:#e8e6e1;
+      --text-dim:#a3a9b0;
+      --border:#2c2f34;
+      --accent:#e0983a;
+      --accent-soft:#2a2113;
+      --code-bg:#0e0f11;
+      --code-text:#e8e6e1;
+      --high:#4a1f22;
+      --high-text:#ff9da4;
+      --medium:#463a12;
+      --medium-text:#ffd873;
+      --low:#173a25;
+      --low-text:#7fe3a3;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.55;
+  }
+  a{color:var(--accent);}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px;}
+
+  header.top{
+    border-bottom:1px solid var(--border);
+    padding:16px 0;
+  }
+  header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.05rem;}
+  .brand .emoji{font-size:1.4rem;}
+  .top-links{display:flex;gap:18px;font-size:.92rem;font-weight:600;}
+  .top-links a{text-decoration:none;}
+  .top-links a:hover{text-decoration:underline;}
+
+  .hero{padding:64px 0 48px;text-align:center;}
+  .hero h1{font-size:2.4rem;margin:0 0 14px;letter-spacing:-.02em;}
+  .hero p.lead{
+    max-width:640px;margin:0 auto 28px;
+    color:var(--text-dim);font-size:1.1rem;
+  }
+  .badges{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-bottom:28px;}
+  .badges img{height:20px;display:block;}
+  .cta-row{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;}
+  .btn{
+    display:inline-flex;align-items:center;gap:8px;
+    padding:11px 20px;border-radius:8px;font-weight:600;font-size:.95rem;
+    text-decoration:none;border:1px solid transparent;transition:transform .06s ease;
+  }
+  .btn:active{transform:scale(.98);}
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-secondary{background:var(--bg-alt);color:var(--text);border-color:var(--border);}
+
+  section{padding:48px 0;border-top:1px solid var(--border);}
+  section h2{font-size:1.5rem;margin:0 0 8px;}
+  section p.section-lead{color:var(--text-dim);margin:0 0 32px;max-width:620px;}
+
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;}
+  .step{
+    background:var(--bg-alt);border:1px solid var(--border);border-radius:12px;
+    padding:20px 18px;box-shadow:var(--shadow);
+  }
+  .step .num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;background:var(--accent-soft);
+    color:var(--accent);font-weight:700;font-size:.85rem;margin-bottom:12px;
+  }
+  .step h3{margin:0 0 6px;font-size:1rem;}
+  .step p{margin:0;color:var(--text-dim);font-size:.9rem;}
+
+  .demo{
+    background:var(--bg-alt);border:1px solid var(--border);border-radius:14px;
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+  .demo-header{
+    display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg, rgba(0,0,0,.02), transparent);
+  }
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--border);}
+  .demo-title{margin-left:6px;font-size:.85rem;color:var(--text-dim);font-weight:600;}
+  .demo-body{padding:20px;}
+  .demo-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media (max-width:760px){ .demo-grid{grid-template-columns:1fr;} .steps{grid-template-columns:1fr 1fr;} }
+
+  .field-label{font-size:.8rem;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;}
+  .mock-textarea{
+    border:1px solid var(--border);border-radius:8px;padding:14px;font-size:.88rem;
+    background:var(--bg);min-height:140px;color:var(--text);
+  }
+  .mock-btn{
+    margin-top:14px;display:inline-flex;align-items:center;gap:6px;
+    background:var(--accent);color:#fff;border:none;border-radius:7px;
+    padding:9px 16px;font-size:.85rem;font-weight:700;cursor:default;
+  }
+
+  table.tc{width:100%;border-collapse:collapse;font-size:.78rem;}
+  table.tc th, table.tc td{border:1px solid var(--border);padding:6px 8px;text-align:left;vertical-align:top;}
+  table.tc th{background:var(--bg);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;color:var(--text-dim);}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-weight:700;font-size:.72rem;}
+  .pill.high{background:var(--high);color:var(--high-text);}
+  .pill.medium{background:var(--medium);color:var(--medium-text);}
+  .pill.low{background:var(--low);color:var(--low-text);}
+  .demo-caption{margin-top:14px;font-size:.78rem;color:var(--text-dim);}
+
+  .features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media (max-width:760px){ .features{grid-template-columns:1fr 1fr;} }
+  @media (max-width:520px){ .features{grid-template-columns:1fr;} }
+  .feature{
+    background:var(--bg-alt);border:1px solid var(--border);border-radius:12px;
+    padding:18px;box-shadow:var(--shadow);
+  }
+  .feature .icon{font-size:1.3rem;margin-bottom:8px;display:block;}
+  .feature h3{margin:0 0 6px;font-size:.95rem;}
+  .feature p{margin:0;color:var(--text-dim);font-size:.85rem;}
+
+  .stack{display:flex;flex-wrap:wrap;gap:8px;}
+  .stack span{
+    background:var(--bg-alt);border:1px solid var(--border);border-radius:999px;
+    padding:6px 14px;font-size:.82rem;font-weight:600;color:var(--text-dim);
+  }
+
+  pre{
+    background:var(--code-bg);color:var(--code-text);border-radius:10px;
+    padding:18px 20px;overflow-x:auto;font-size:.85rem;line-height:1.6;
+  }
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+
+  footer{border-top:1px solid var(--border);padding:32px 0;text-align:center;color:var(--text-dim);font-size:.85rem;}
+  footer a{color:var(--text-dim);text-decoration:underline;}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="emoji">🧪</span> AI Test Case Generator</div>
+    <nav class="top-links">
+      <a href="#demo">Demo</a>
+      <a href="#features">Features</a>
+      <a href="#start">Setup</a>
+      <a href="https://github.com/vannt-dev/ai-testcase-generator">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero" style="border-top:none;">
+  <div class="wrap">
+    <h1>Generate test cases from a requirement,<br>in seconds.</h1>
+    <p class="lead">
+      Paste a user story / requirement / Jira ticket and let Claude analyze it and generate a
+      complete set of Positive/Negative/Edge case test cases — edit them right in the table,
+      then export to Excel, ready to hand off to testers.
+    </p>
+    <div class="badges">
+      <img src="https://github.com/vannt-dev/ai-testcase-generator/actions/workflows/tests.yml/badge.svg" alt="Tests status">
+      <img src="https://img.shields.io/github/license/vannt-dev/ai-testcase-generator" alt="License">
+      <img src="https://img.shields.io/badge/UI-Streamlit-ff4b4b" alt="Streamlit">
+      <img src="https://img.shields.io/badge/model-Claude-b45309" alt="Claude">
+    </div>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/vannt-dev/ai-testcase-generator">View source on GitHub</a>
+      <a class="btn btn-secondary" href="#start">Run it locally</a>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="section-lead">One shared core engine, per-project config — no code changes needed to add a new project.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Pick a project</h3>
+        <p>Each project is a single YAML file: domain rules, glossary, platform, and its own test ID format.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Paste a requirement</h3>
+        <p>A user story, Jira ticket, or plain business description — no special formatting required.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Claude generates test cases</h3>
+        <p>Structured Output guarantees the schema; the AI asks for clarification if the requirement is incomplete.</p>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <h3>Edit &amp; export to Excel</h3>
+        <p>Edit directly in the table, add/remove rows, then download a pre-styled .xlsx file.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <h2>Interface preview</h2>
+    <p class="section-lead">A static mock-up of the real Streamlit UI (not interactive) — input on the left, AI-generated results on the right.</p>
+
+    <div class="demo">
+      <div class="demo-header">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span class="demo-title">🧪 AI Test Case Generator — example_ecommerce</span>
+      </div>
+      <div class="demo-body">
+        <div class="demo-grid">
+          <div>
+            <div class="field-label">📋 Requirement / User Story</div>
+            <div class="mock-textarea">As a user, I want to log in with my phone number and an OTP so I can access the app without remembering a password. The OTP is 6 digits, expires after 5 minutes, and allows at most 3 incorrect attempts.</div>
+            <button class="mock-btn" type="button">🚀 Generate Test Cases</button>
+          </div>
+          <div>
+            <div class="field-label">✏️ Generated test cases</div>
+            <table class="tc">
+              <thead>
+                <tr><th>Test ID</th><th>Title</th><th>Priority</th><th>Type</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>TC_LOGIN_001</td><td>Successful login with a valid OTP</td><td><span class="pill high">High</span></td><td>Positive</td></tr>
+                <tr><td>TC_LOGIN_002</td><td>Account temporarily locked after 3 incorrect OTP attempts</td><td><span class="pill high">High</span></td><td>Negative</td></tr>
+                <tr><td>TC_LOGIN_003</td><td>OTP can't be used after expiring at 5 minutes</td><td><span class="pill medium">Medium</span></td><td>Edge case</td></tr>
+                <tr><td>TC_LOGIN_004</td><td>Phone number with an invalid format</td><td><span class="pill medium">Medium</span></td><td>Negative</td></tr>
+                <tr><td>TC_LOGIN_005</td><td>OTP input screen is responsive on small displays</td><td><span class="pill low">Low</span></td><td>UI/UX</td></tr>
+              </tbody>
+            </table>
+            <div class="demo-caption">Every cell can be edited directly, rows added/removed, before exporting to Excel.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2>Features</h2>
+    <p class="section-lead">Built for real use in a QA workflow, not just a demo.</p>
+    <div class="features">
+      <div class="feature">
+        <span class="icon">🧩</span>
+        <h3>Per-project config</h3>
+        <p>Domain rules, glossary, platform, test ID format — decoupled from the core engine, no code changes needed.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🔁</span>
+        <h3>Auto-retry on transient errors</h3>
+        <p>Automatically retries with backoff on rate limits or connection loss to the Anthropic API.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">💰</span>
+        <h3>Cost tracking</h3>
+        <p>Shows token usage, prompt caching, and an estimated USD cost for every generation run.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🕘</span>
+        <h3>Session history</h3>
+        <p>Keeps recent generation runs from the current session, viewable or restorable anytime.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">📊</span>
+        <h3>Pre-styled Excel export</h3>
+        <p>An .xlsx file with priority color-coding, a frozen header, and a Summary sheet — usable right away.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">✅</span>
+        <h3>Structured Output</h3>
+        <p>Validated by Pydantic against a fixed schema — no worrying about malformed JSON from the AI.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <h2>Setup &amp; try it out</h2>
+    <p class="section-lead">Requires Python ≥ 3.10. See the full details in the <a href="https://github.com/vannt-dev/ai-testcase-generator#readme">README</a>.</p>
+    <pre><code>git clone https://github.com/vannt-dev/ai-testcase-generator.git
+cd ai-testcase-generator
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+cp .env.example .env          # fill in ANTHROPIC_API_KEY
+
+streamlit run app.py</code></pre>
+
+    <div class="stack" style="margin-top:24px;">
+      <span>Python</span><span>Streamlit</span><span>Anthropic Claude API</span>
+      <span>Pydantic</span><span>openpyxl</span><span>pytest</span><span>GitHub Actions</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    MIT License · <a href="https://github.com/vannt-dev/ai-testcase-generator">github.com/vannt-dev/ai-testcase-generator</a>
+  </div>
+</footer>
+
+</body>
+</html>

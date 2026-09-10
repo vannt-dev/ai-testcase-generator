@@ -79,6 +79,10 @@ class ReviewResult(BaseModel):
     summary_note: str
 
 
+class ColumnMappingResult(BaseModel):
+    mapping: dict[str, str]
+
+
 class AIClient:
     def __init__(
         self,
@@ -238,3 +242,18 @@ class AIClient:
         result = build_edited_result(parsed_result, parsed_result["test_cases"])
         result["usage"] = self._build_usage(message.usage)
         return result
+
+    def suggest_column_mapping(self, system_prompt: str, headers: list[str], sample_rows: list[dict]) -> dict:
+        """
+        Ask the AI to guess which uploaded column corresponds to each
+        TestCase field, given the file's headers and a few sample rows.
+        Returns {"mapping": {...}} — always to be confirmed by the user
+        before use.
+        """
+        sample_json = json.dumps(sample_rows, ensure_ascii=False, indent=2)
+        message = self._call_ai(
+            system_prompt,
+            f"Uploaded file headers: {headers}\n\nSample rows (JSON):\n\n{sample_json}",
+            ColumnMappingResult,
+        )
+        return message.parsed_output.model_dump()

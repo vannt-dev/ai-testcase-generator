@@ -4,7 +4,7 @@ import anthropic
 import httpx2
 import pytest
 
-from core.ai_client import AIClient, GenerationResult, ReviewResult
+from core.ai_client import AIClient, GenerationResult, ReviewResult, ColumnMappingResult
 
 
 VALID_RESULT = GenerationResult.model_validate(
@@ -247,3 +247,24 @@ def test_generate_missing_cases_returns_same_shape_as_generate_test_cases():
     assert result["test_cases"][0]["test_id"] == "TC_LOGIN_001"
     user_content = messages.kwargs["messages"][0]["content"]
     assert "Missing OTP resend case" in user_content
+
+
+def test_suggest_column_mapping_returns_mapping_dict():
+    parsed = ColumnMappingResult.model_validate(
+        {"mapping": {"test_id": "ID", "title": "Name", "module": "", "precondition": "",
+                      "steps": "", "test_data": "", "expected_result": "", "priority": "",
+                      "type": "", "platform": ""}}
+    )
+    response = SimpleNamespace(
+        parsed_output=parsed,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=5, output_tokens=5),
+    )
+    client, messages = make_client(response)
+
+    result = client.suggest_column_mapping(
+        "system prompt", ["ID", "Name"], [{"ID": "TC_001", "Name": "Login works"}]
+    )
+
+    assert messages.kwargs["output_format"] is ColumnMappingResult
+    assert result["mapping"]["test_id"] == "ID"

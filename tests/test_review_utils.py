@@ -1,3 +1,5 @@
+import pytest
+
 from core.review_utils import apply_column_mapping
 
 
@@ -50,6 +52,29 @@ def test_apply_column_mapping_preserves_falsy_but_valid_values():
     assert result[0]["test_id"] == "TC_001"
     assert result[0]["module"] == "0"
     assert result[0]["title"] == "False"
+
+
+def test_apply_column_mapping_quote_prefixes_formula_injection():
+    raw_rows = [{"ID": '=HYPERLINK("http://evil","click")'}]
+    mapping = {"test_id": "ID"}
+
+    result = apply_column_mapping(raw_rows, mapping)
+
+    assert result[0]["test_id"].startswith("'=")
+    assert not result[0]["test_id"].startswith("=")
+
+
+@pytest.mark.parametrize("dangerous", ["=1+1", "+1", "-1+1", "@SUM(A1)"])
+def test_apply_column_mapping_quote_prefixes_all_formula_triggers(dangerous):
+    result = apply_column_mapping([{"ID": dangerous}], {"test_id": "ID"})
+
+    assert result[0]["test_id"] == "'" + dangerous
+
+
+def test_apply_column_mapping_leaves_safe_values_untouched():
+    result = apply_column_mapping([{"ID": "TC_001"}], {"test_id": "ID"})
+
+    assert result[0]["test_id"] == "TC_001"
 
 
 from core.review_utils import merge_test_cases

@@ -1,6 +1,18 @@
 """Business logic for the Test Case Reviewer page: column mapping and merging."""
 from core.result_utils import TEST_CASE_FIELDS
 
+# Leading characters Excel/Sheets interpret as the start of a formula.
+# Uploaded files are untrusted input, so a value beginning with one of
+# these is quote-prefixed to force it to be treated as literal text.
+FORMULA_TRIGGER_CHARS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_formula_prefix(value: str) -> str:
+    """Quote-prefix a value that Excel would otherwise evaluate as a formula."""
+    if value and value[0] in FORMULA_TRIGGER_CHARS:
+        return "'" + value
+    return value
+
 
 def apply_column_mapping(raw_rows: list[dict], mapping: dict[str, str]) -> list[dict]:
     """
@@ -8,13 +20,15 @@ def apply_column_mapping(raw_rows: list[dict], mapping: dict[str, str]) -> list[
     using a confirmed {target_field: uploaded_column_name} mapping. A
     field mapped to "" (or missing from `mapping`) becomes an empty
     string in the output. Falsy-but-valid values (e.g. 0, False) are
-    preserved as strings, not converted to empty strings.
+    preserved as strings, not converted to empty strings. Values that
+    would be read as Excel formulas are quote-prefixed (CSV/formula
+    injection guard) since the source file is untrusted.
     """
     normalized = []
     for row in raw_rows:
         normalized.append(
             {
-                field: (
+                field: _sanitize_formula_prefix(
                     "" if row.get(mapping.get(field, "")) is None
                     else str(row.get(mapping.get(field, ""))).strip()
                 )

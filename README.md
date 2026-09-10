@@ -119,7 +119,7 @@ cp configs/_template.yaml configs/your_project_name.yaml
 ## Roadmap
 
 - [x] Phase 1: Generate test cases from a requirement (current MVP)
-- [ ] Phase 2: Test Case Reviewer / Coverage Checker
+- [x] Phase 2: Test Case Reviewer / Coverage Checker
 - [ ] Phase 3: AI-assisted Bug Report Writer + Jira integration
 - [ ] Phase 4: Expand into automation (self-healing scripts, generated test code)
 

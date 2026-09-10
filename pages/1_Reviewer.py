@@ -7,9 +7,13 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
+import pandas as pd
+
 from core.ai_client import AIClient
+from core.excel_exporter import export_to_excel
 from core.file_import import FileImportError, parse_uploaded_file
 from core.prompt_builder import (
+    BASE_PROMPT_PATH,
     REVIEWER_PROMPT_PATH,
     build_system_prompt,
     list_available_configs,
@@ -17,7 +21,7 @@ from core.prompt_builder import (
     load_project_config,
 )
 from core.result_utils import TEST_CASE_FIELDS
-from core.review_utils import apply_column_mapping
+from core.review_utils import apply_column_mapping, merge_test_cases
 
 load_dotenv()
 
@@ -146,4 +150,58 @@ with upload_tab:
                     _run_review(upload_requirement, project_config, normalized)
 
 if "review_result" in st.session_state:
-    _render_review_result(st.session_state["review_result"])
+    review = st.session_state["review_result"]
+    _render_review_result(review)
+
+    if review["gaps"]:
+        if st.button("✨ Generate missing cases", key="generate_missing_btn"):
+            try:
+                client = AIClient(api_key=st.session_state.get("api_key") or None)
+            except ValueError as e:
+                st.error(str(e))
+                st.stop()
+
+            system_prompt = build_system_prompt(st.session_state["review_config"], base_prompt_path=BASE_PROMPT_PATH)
+            with st.status("Generating missing test cases...", expanded=False) as status:
+                try:
+                    generated = client.generate_missing_cases(
+                        system_prompt,
+                        st.session_state["review_requirement_text"],
+                        review["gaps"],
+                    )
+                except ValueError as e:
+                    status.update(label=f"Error: {e}", state="error")
+                    st.error(f"Error calling the AI: {e}")
+                    st.stop()
+                status.update(label="Done", state="complete")
+            st.session_state["generated_missing_cases"] = generated["test_cases"]
+
+    if st.session_state.get("generated_missing_cases"):
+        st.subheader("✏️ Suggested new test cases")
+        df = pd.DataFrame(st.session_state["generated_missing_cases"])
+        edited_df = st.data_editor(
+            df, key="missing_cases_editor", use_container_width=True, hide_index=True, num_rows="dynamic"
+        )
+
+        if st.button("➕ Merge into main set", key="merge_btn"):
+            merged = merge_test_cases(
+                st.session_state["review_test_cases"],
+                edited_df.to_dict("records"),
+            )
+            st.session_state["review_test_cases"] = merged
+            st.session_state["merged_result"] = {
+                "test_cases": merged,
+                "summary": {"total": len(merged), "by_type": {}, "open_questions": []},
+            }
+            st.session_state.pop("generated_missing_cases", None)
+            st.success(f"Merged. The set now has {len(merged)} test cases.")
+
+    if st.session_state.get("merged_result"):
+        excel_bytes = export_to_excel(st.session_state["merged_result"])
+        st.download_button(
+            "⬇️ Download merged set (Excel)",
+            data=excel_bytes,
+            file_name="reviewed_testcases.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_merged_btn",
+        )

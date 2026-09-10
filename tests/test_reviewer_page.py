@@ -138,3 +138,41 @@ def test_upload_review_button_disabled_when_mapping_incomplete(monkeypatch):
     assert not at.exception
     assert at.button(key="review_upload_btn").disabled is True
     assert any("Map every field" in w.value for w in at.warning)
+
+
+FAKE_MISSING_CASES = {
+    "test_cases": [
+        {
+            "test_id": "TC_LOGIN_001", "module": "Login", "title": "OTP resend works",
+            "precondition": "OTP expired", "steps": "1. Request resend", "test_data": "n/a",
+            "expected_result": "New OTP sent", "priority": "High", "type": "Negative", "platform": "Web",
+        }
+    ],
+    "summary": {"total": 1, "by_type": {"negative": 1}, "open_questions": []},
+    "usage": {"model": "claude-sonnet-5", "estimated_cost_usd": 0.0005},
+}
+
+
+def test_generate_missing_cases_and_merge(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    _seed_session_state(at)
+    at.run(timeout=30)
+
+    with patch.object(AIClient, "review_test_cases", return_value=FAKE_REVIEW):
+        at.button(key="review_session_btn").click().run(timeout=30)
+
+    with patch.object(AIClient, "generate_missing_cases", return_value=FAKE_MISSING_CASES):
+        at.button(key="generate_missing_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert len(at.session_state["generated_missing_cases"]) == 1
+
+    at.button(key="merge_btn").click().run(timeout=30)
+
+    assert not at.exception
+    # The seeded existing case and the generated one both use test_id
+    # "TC_LOGIN_001" — this exercises merge_test_cases' collision rename.
+    merged_ids = [tc["test_id"] for tc in at.session_state["review_test_cases"]]
+    assert merged_ids == ["TC_LOGIN_001", "TC_LOGIN_001_2"]
+    assert at.session_state["merged_result"]["test_cases"][1]["title"] == "OTP resend works"

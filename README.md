@@ -4,10 +4,11 @@
 
 **[Live demo](https://ai-testcase-gen.streamlit.app/)** · **[Demo page](https://vannt-dev.github.io/ai-testcase-generator/)**
 
-A tool that helps **manual testers** automatically generate test cases from
-a requirement/user story using AI (Claude), and export them to a
-ready-to-use Excel file. Designed to be **applicable to any project** —
-just add one config file, no code changes needed.
+A tool that helps **manual testers** generate test cases from a
+requirement/user story, review an existing test set for coverage gaps and
+duplicates, generate the missing cases, and export a ready-to-use Excel file.
+It uses Claude and is designed to be **applicable to any project** — just add
+one config file, no code changes needed.
 
 ## Why use this tool
 
@@ -19,33 +20,44 @@ just add one config file, no code changes needed.
 - Automatically retries transient errors (rate limit, connection loss)
   from the Anthropic API
 - Keeps a per-session history of generation runs to review/restore later
+- Reviews either the current generated set or an uploaded `.xlsx`/`.csv`
+- Suggests and lets the user confirm column mappings for external files
+- Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
 
 ## Architecture
 
 ```
-Core Engine (unchanged across projects)
-        +
-Project Config (YAML — changes per project)
-        =
-Test cases tailored to that project's domain/business rules
+Generator or Reviewer workflow
+            +
+Shared Core Engine + task-specific prompt
+            +
+Project Config (YAML)
+            =
+Project-aware test cases and coverage reports
 ```
 
 ## Directory structure
 
 ```
 ai-testcase-generator/
-├── app.py                       # Main Streamlit UI
+├── app.py                       # Generator page and session history
+├── pages/
+│   └── 1_Reviewer.py            # Coverage review, gap generation, merge/export
 ├── core/
 │   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
-│   ├── prompt_builder.py         # Merges the base prompt + project config
+│   ├── file_import.py            # Safely parses uploaded .xlsx/.csv files
+│   ├── prompt_builder.py         # Builds Generator/Reviewer prompts + project config
+│   ├── review_utils.py           # Column mapping and collision-safe merging
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   └── excel_exporter.py         # Exports results to .xlsx
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
 │   └── example_ecommerce.yaml    # Sample config
 ├── prompts/
-│   └── base_system_prompt.md     # Base prompt shared across all projects
-├── tests/                        # pytest (core logic + app.py integration tests)
+│   ├── base_system_prompt.md     # Generates complete test cases
+│   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
+│   └── column_mapping_system_prompt.md
+├── tests/                        # pytest (core logic + both Streamlit pages)
 ├── .github/workflows/tests.yml   # CI: runs pytest on every push/PR
 └── docs/
     └── how-to-add-new-project.md
@@ -79,11 +91,28 @@ running the app.)
 streamlit run app.py
 ```
 
-Open your browser at `http://localhost:8501`:
+Open your browser at `http://localhost:8501`.
+
+### Generate test cases
+
 1. Select a project in the sidebar (defaults to `example_ecommerce`)
 2. Paste a requirement/user story into the text box
 3. Click **Generate Test Cases**
-4. View the results as a table, download the Excel file
+4. Edit the result table and download the Excel file
+
+### Review coverage
+
+1. Open **Reviewer** in Streamlit's page navigation
+2. Choose the current generated set, or upload an `.xlsx`/`.csv` file
+3. For uploads, select a project, enter the source requirement, and confirm
+   the AI-suggested column mapping
+4. Click **Review Coverage** to see the score, missing test types, gaps, and
+   possible duplicate cases
+5. Generate suggested missing cases, edit them, merge them into the original
+   set, and download the merged Excel file
+
+The live Reviewer page is available at
+**[ai-testcase-gen.streamlit.app/Reviewer](https://ai-testcase-gen.streamlit.app/Reviewer)**.
 
 ## Running tests
 
@@ -93,7 +122,7 @@ pytest -q
 ```
 
 CI (GitHub Actions) automatically runs the full test suite on every
-push/PR to `main`.
+push/PR to `main`. The current feature suite contains **95 tests**.
 
 ## Security
 
@@ -104,6 +133,9 @@ push/PR to `main`.
   `ANTHROPIC_API_KEY` environment variable on the server/secrets manager
   and hide/remove that input field, to avoid leaking the key through
   another user's session or browser logs.
+- Uploaded files are limited to 500 data rows. Ambiguous duplicate headers
+  and malformed wide CSV rows are rejected, and mapped spreadsheet-formula
+  prefixes are neutralized before a reviewed set can be exported.
 
 ## Adding your own project
 
@@ -118,7 +150,7 @@ cp configs/_template.yaml configs/your_project_name.yaml
 
 ## Roadmap
 
-- [x] Phase 1: Generate test cases from a requirement (current MVP)
+- [x] Phase 1: Generate test cases from a requirement
 - [x] Phase 2: Test Case Reviewer / Coverage Checker
 - [ ] Phase 3: AI-assisted Bug Report Writer + Jira integration
 - [ ] Phase 4: Expand into automation (self-healing scripts, generated test code)

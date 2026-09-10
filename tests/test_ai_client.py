@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 
 import anthropic
@@ -268,3 +269,41 @@ def test_suggest_column_mapping_returns_mapping_dict():
 
     assert messages.kwargs["output_format"] is ColumnMappingResult
     assert result["mapping"]["test_id"] == "ID"
+
+
+def test_suggest_column_mapping_serializes_non_json_native_cell_values():
+    """openpyxl hands back datetime/Decimal objects — json.dumps must not raise."""
+    parsed = ColumnMappingResult.model_validate({"mapping": {"test_id": "ID"}})
+    response = SimpleNamespace(
+        parsed_output=parsed,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=5, output_tokens=5),
+    )
+    client, messages = make_client(response)
+    created = datetime(2026, 9, 10, 14, 30, 0)
+
+    result = client.suggest_column_mapping(
+        "system prompt",
+        ["ID", "Created"],
+        [{"ID": "TC_001", "Created": created}],
+    )
+
+    assert result["mapping"]["test_id"] == "ID"
+    user_content = messages.kwargs["messages"][0]["content"]
+    assert str(created) in user_content
+
+
+def test_review_test_cases_serializes_non_json_native_cell_values():
+    response = SimpleNamespace(
+        parsed_output=VALID_REVIEW,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+    )
+    client, messages = make_client(response)
+    created = datetime(2026, 9, 10, 14, 30, 0)
+
+    client.review_test_cases(
+        "system prompt", "req text", [{"test_id": "TC_001", "test_data": created}]
+    )
+
+    assert str(created) in messages.kwargs["messages"][0]["content"]

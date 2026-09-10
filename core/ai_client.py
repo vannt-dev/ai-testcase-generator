@@ -208,7 +208,10 @@ class AIClient:
         Send the requirement + an existing test case set to Claude for a
         coverage review. Returns {"review": {...ReviewResult...}, "usage": {...}}.
         """
-        test_cases_json = json.dumps(test_cases, ensure_ascii=False, indent=2)
+        # default=str: uploaded rows can carry non-JSON-native values
+        # (datetime, Decimal, ...) from openpyxl — stringify instead of
+        # raising an unhandled TypeError.
+        test_cases_json = json.dumps(test_cases, ensure_ascii=False, indent=2, default=str)
         message = self._call_ai(
             system_prompt,
             (
@@ -228,7 +231,7 @@ class AIClient:
         list from a prior review_test_cases() result). Returns the same
         shape as generate_test_cases().
         """
-        gaps_json = json.dumps(gaps, ensure_ascii=False, indent=2)
+        gaps_json = json.dumps(gaps, ensure_ascii=False, indent=2, default=str)
         message = self._call_ai(
             system_prompt,
             (
@@ -250,7 +253,7 @@ class AIClient:
         Returns {"mapping": {...}} — always to be confirmed by the user
         before use.
         """
-        sample_json = json.dumps(sample_rows, ensure_ascii=False, indent=2)
+        sample_json = json.dumps(sample_rows, ensure_ascii=False, indent=2, default=str)
         message = self._call_ai(
             system_prompt,
             f"Uploaded file headers: {headers}\n\nSample rows (JSON):\n\n{sample_json}",

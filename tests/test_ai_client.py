@@ -230,3 +230,20 @@ def test_review_test_cases_includes_test_cases_in_user_message():
     user_content = messages.kwargs["messages"][0]["content"]
     assert "req text" in user_content
     assert "TC_001" in user_content
+
+
+def test_generate_missing_cases_returns_same_shape_as_generate_test_cases():
+    response = SimpleNamespace(
+        parsed_output=VALID_RESULT,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=20, output_tokens=15),
+    )
+    client, messages = make_client(response)
+    gaps = [{"description": "Missing OTP resend case", "suggested_type": "Negative", "severity": "High"}]
+
+    result = client.generate_missing_cases("system prompt", "requirement", gaps)
+
+    assert messages.kwargs["output_format"] is GenerationResult
+    assert result["test_cases"][0]["test_id"] == "TC_LOGIN_001"
+    user_content = messages.kwargs["messages"][0]["content"]
+    assert "Missing OTP resend case" in user_content

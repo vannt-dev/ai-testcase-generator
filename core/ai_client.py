@@ -217,3 +217,24 @@ class AIClient:
             "review": message.parsed_output.model_dump(),
             "usage": self._build_usage(message.usage),
         }
+
+    def generate_missing_cases(self, system_prompt: str, requirement_text: str, gaps: list[dict]) -> dict:
+        """
+        Generate test cases to fill the given coverage gaps (the "gaps"
+        list from a prior review_test_cases() result). Returns the same
+        shape as generate_test_cases().
+        """
+        gaps_json = json.dumps(gaps, ensure_ascii=False, indent=2)
+        message = self._call_ai(
+            system_prompt,
+            (
+                f"Requirement/User Story:\n\n{requirement_text}\n\n"
+                "Write test cases to fill ONLY the following coverage gaps "
+                f"(one or more test cases per gap as needed):\n\n{gaps_json}"
+            ),
+            GenerationResult,
+        )
+        parsed_result = message.parsed_output.model_dump()
+        result = build_edited_result(parsed_result, parsed_result["test_cases"])
+        result["usage"] = self._build_usage(message.usage)
+        return result

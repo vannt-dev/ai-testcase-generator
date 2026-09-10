@@ -15,12 +15,18 @@ from core.file_import import FileImportError, parse_uploaded_file
 from core.prompt_builder import (
     BASE_PROMPT_PATH,
     REVIEWER_PROMPT_PATH,
+    ProjectConfigError,
     build_system_prompt,
     list_available_configs,
     load_column_mapping_prompt,
     load_project_config,
 )
-from core.result_utils import TEST_CASE_FIELDS
+from core.result_utils import (
+    TEST_CASE_FIELDS,
+    build_edited_result,
+    find_incomplete_rows,
+    normalize_edited_records,
+)
 from core.review_utils import apply_column_mapping, merge_test_cases
 
 load_dotenv()
@@ -30,6 +36,28 @@ CONFIGS_DIR = Path("configs")
 st.set_page_config(page_title="Reviewer — AI Test Case Generator", page_icon="🔍", layout="wide")
 st.title("🔍 Test Case Reviewer")
 st.caption("Check test case coverage against a requirement and get gap-filling suggestions.")
+
+# The API key lives in st.session_state and is shared with the Generator
+# page, but Streamlit renders each page's sidebar independently — without
+# this block the page is a dead end when opened first with no
+# ANTHROPIC_API_KEY environment variable set.
+with st.sidebar:
+    st.header("⚙️ Configuration")
+    api_key = st.text_input(
+        "Anthropic API Key",
+        type="password",
+        value=st.session_state.get("api_key", ""),
+        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
+    )
+    if api_key:
+        st.session_state["api_key"] = api_key
+    if api_key:
+        st.caption(
+            "⚠️ The API key entered here is only kept in this browser session's "
+            "memory (never written to disk). If this app is deployed publicly, "
+            "set the `ANTHROPIC_API_KEY` environment variable on the server "
+            "instead of typing it in here."
+        )
 
 
 def _run_review(requirement_text: str, config: dict, test_cases: list[dict]) -> None:
@@ -48,6 +76,13 @@ def _run_review(requirement_text: str, config: dict, test_cases: list[dict]) -> 
             st.error(f"Error calling the AI: {e}")
             return
         status.update(label="Review complete", state="complete")
+
+    # Drop any gap-fill/merge state from a previous review, otherwise the
+    # previously generated cases stay in the editor and can be merged into
+    # this (different) test case set.
+    st.session_state.pop("generated_missing_cases", None)
+    st.session_state.pop("merged_result", None)
+    st.session_state.pop("missing_cases_editor", None)
 
     st.session_state["review_result"] = result["review"]
     st.session_state["review_test_cases"] = test_cases
@@ -127,7 +162,10 @@ with upload_tab:
 
             st.markdown("**Confirm column mapping:**")
             headers = list(raw_rows[0].keys())
-            header_options = [""] + headers
+            # Skip blank/whitespace-only header names: they would render as a
+            # second empty entry indistinguishable from "unmapped", and an
+            # unmapped field could then silently read that column's data.
+            header_options = [""] + [h for h in headers if h.strip()]
             suggestion = st.session_state.get("column_mapping_suggestion", {})
             confirmed_mapping = {}
             for field in TEST_CASE_FIELDS:
@@ -141,12 +179,19 @@ with upload_tab:
             if not mapping_complete:
                 st.warning("Map every field above before reviewing.")
 
-            if st.button("🔍 Review Coverage", key="review_upload_btn", disabled=not mapping_complete):
-                if not upload_requirement.strip():
-                    st.warning("Please enter the requirement text first.")
-                else:
-                    normalized = apply_column_mapping(raw_rows, confirmed_mapping)
+            if not upload_requirement.strip():
+                st.warning("Enter the requirement text above before reviewing.")
+
+            review_upload_ready = mapping_complete and bool(upload_requirement.strip())
+            if st.button(
+                "🔍 Review Coverage", key="review_upload_btn", disabled=not review_upload_ready
+            ):
+                normalized = apply_column_mapping(raw_rows, confirmed_mapping)
+                try:
                     project_config = load_project_config(CONFIGS_DIR / f"{upload_project}.yaml")
+                except ProjectConfigError as e:
+                    st.error(str(e))
+                else:
                     _run_review(upload_requirement, project_config, normalized)
 
 if "review_result" in st.session_state:
@@ -180,28 +225,58 @@ if "review_result" in st.session_state:
         st.subheader("✏️ Suggested new test cases")
         df = pd.DataFrame(st.session_state["generated_missing_cases"])
         edited_df = st.data_editor(
-            df, key="missing_cases_editor", use_container_width=True, hide_index=True, num_rows="dynamic"
+            df,
+            key="missing_cases_editor",
+            use_container_width=True,
+            hide_index=True,
+            num_rows="dynamic",
+            column_config={
+                "priority": st.column_config.SelectboxColumn(
+                    "Priority", options=["High", "Medium", "Low"], required=True
+                ),
+                "type": st.column_config.SelectboxColumn(
+                    "Type",
+                    options=[
+                        "Positive", "Negative", "Edge case", "UI/UX",
+                        "Compatibility", "Performance", "Security",
+                    ],
+                    required=True,
+                ),
+                "platform": st.column_config.SelectboxColumn(
+                    "Platform", options=["Web", "iOS", "Android", "All"], required=True
+                ),
+            },
         )
 
         if st.button("➕ Merge into main set", key="merge_btn"):
-            merged = merge_test_cases(
-                st.session_state["review_test_cases"],
-                edited_df.to_dict("records"),
-            )
+            # normalize_edited_records drops blank rows the dynamic editor
+            # allows; build_edited_result recomputes total/by_type so the
+            # exported Summary sheet matches the Generator's.
+            edited_generated = normalize_edited_records(edited_df.to_dict("records"))
+            merged = merge_test_cases(st.session_state["review_test_cases"], edited_generated)
             st.session_state["review_test_cases"] = merged
-            st.session_state["merged_result"] = {
-                "test_cases": merged,
-                "summary": {"total": len(merged), "by_type": {}, "open_questions": []},
-            }
+            st.session_state["merged_result"] = build_edited_result({}, merged)
             st.session_state.pop("generated_missing_cases", None)
             st.success(f"Merged. The set now has {len(merged)} test cases.")
 
     if st.session_state.get("merged_result"):
+        merged_test_cases = st.session_state["merged_result"]["test_cases"]
+        incomplete_rows = find_incomplete_rows(merged_test_cases)
+        if incomplete_rows:
+            st.error(
+                "Cannot export yet: the following rows are missing required data: "
+                + ", ".join(map(str, incomplete_rows))
+            )
+
         excel_bytes = export_to_excel(st.session_state["merged_result"])
+        export_project_name = st.session_state.get("review_config", {}).get(
+            "project_name", "project"
+        )
         st.download_button(
             "⬇️ Download merged set (Excel)",
             data=excel_bytes,
-            file_name="reviewed_testcases.xlsx",
+            file_name=f"reviewed_testcases_{export_project_name.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download_merged_btn",
+            disabled=bool(incomplete_rows) or not merged_test_cases,
         )

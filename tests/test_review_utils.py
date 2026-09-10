@@ -50,3 +50,44 @@ def test_apply_column_mapping_preserves_falsy_but_valid_values():
     assert result[0]["test_id"] == "TC_001"
     assert result[0]["module"] == "0"
     assert result[0]["title"] == "False"
+
+
+from core.review_utils import merge_test_cases
+
+
+def test_merge_test_cases_appends_without_collision():
+    existing = [{"test_id": "TC_001", "title": "A"}]
+    new = [{"test_id": "TC_002", "title": "B"}]
+
+    result = merge_test_cases(existing, new)
+
+    assert [tc["test_id"] for tc in result] == ["TC_001", "TC_002"]
+
+
+def test_merge_test_cases_renames_colliding_test_id():
+    existing = [{"test_id": "TC_001", "title": "A"}]
+    new = [{"test_id": "TC_001", "title": "B (new)"}]
+
+    result = merge_test_cases(existing, new)
+
+    ids = [tc["test_id"] for tc in result]
+    assert ids == ["TC_001", "TC_001_2"]
+    assert result[1]["title"] == "B (new)"
+
+
+def test_merge_test_cases_renames_multiple_collisions_sequentially():
+    existing = [{"test_id": "TC_001"}, {"test_id": "TC_001_2"}]
+    new = [{"test_id": "TC_001"}]
+
+    result = merge_test_cases(existing, new)
+
+    assert [tc["test_id"] for tc in result] == ["TC_001", "TC_001_2", "TC_001_3"]
+
+
+def test_merge_test_cases_does_not_mutate_inputs():
+    existing = [{"test_id": "TC_001"}]
+    new = [{"test_id": "TC_001"}]
+
+    merge_test_cases(existing, new)
+
+    assert new[0]["test_id"] == "TC_001"

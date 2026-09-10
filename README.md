@@ -124,3 +124,7 @@ cp configs/_template.yaml configs/ten_project_cua_ban.yaml
 - Chất lượng test case phụ thuộc nhiều vào chất lượng `domain_rules`
   trong file config — nên đầu tư thời gian hoàn thiện config cho từng
   project.
+
+## License
+
+[MIT](LICENSE)

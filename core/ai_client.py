@@ -173,13 +173,12 @@ class AIClient:
         if message.stop_reason == "max_tokens":
             raise ValueError(
                 "The AI's response was cut off after exceeding max_tokens before "
-                "finishing the JSON. Try a shorter/more specific requirement, or "
-                "split it into multiple generation runs."
+                "finishing the JSON. Try a shorter/more specific input, or split "
+                "it into multiple runs."
             )
         if message.parsed_output is None:
             raise ValueError(
-                "The AI did not return a result matching the expected schema "
-                "(test_cases/summary)."
+                "The AI did not return a result matching the expected schema."
             )
         return message
 

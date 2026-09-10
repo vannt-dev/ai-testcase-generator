@@ -1,6 +1,7 @@
 """
 Module responsible for calling the Claude API to generate test cases.
 """
+import json
 import os
 import time
 from typing import Any
@@ -57,6 +58,27 @@ class GenerationResult(BaseModel):
     summary: TestCaseSummary
 
 
+class CoverageGap(BaseModel):
+    description: str = Field(min_length=1)
+    suggested_type: Literal[
+        "Positive", "Negative", "Edge case", "UI/UX", "Compatibility", "Performance", "Security"
+    ]
+    severity: Literal["High", "Medium", "Low"]
+
+
+class DuplicateGroup(BaseModel):
+    test_ids: list[str] = Field(min_length=2)
+    reason: str = Field(min_length=1)
+
+
+class ReviewResult(BaseModel):
+    coverage_score: int = Field(ge=0, le=100)
+    missing_test_types: list[str]
+    gaps: list[CoverageGap]
+    duplicates: list[DuplicateGroup]
+    summary_note: str
+
+
 class AIClient:
     def __init__(
         self,
@@ -107,12 +129,11 @@ class AIClient:
             "estimated_cost_usd": estimated_cost,
         }
 
-    def generate_test_cases(self, system_prompt: str, requirement_text: str) -> dict:
+    def _call_ai(self, system_prompt: str, user_content: str, output_format: type[BaseModel]):
         """
-        Send the requirement + system prompt (already merged with the project
-        config) to Claude, and return a dict {"test_cases": [...], "summary":
-        {...}} validated against the schema (Structured Outputs), ready for
-        excel_exporter/app.py.
+        Shared retry/error-handling wrapper around client.messages.parse.
+        Returns the raw `message` object (caller extracts parsed_output/
+        usage). Raises ValueError with a user-facing message on failure.
         """
         attempt = 0
         while True:
@@ -129,13 +150,8 @@ class AIClient:
                             "cache_control": {"type": "ephemeral"},
                         }
                     ],
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": f"Requirement/User Story to write test cases for:\n\n{requirement_text}",
-                        }
-                    ],
-                    output_format=GenerationResult,
+                    messages=[{"role": "user", "content": user_content}],
+                    output_format=output_format,
                 )
                 break
             except anthropic.AuthenticationError:
@@ -160,14 +176,45 @@ class AIClient:
                 "finishing the JSON. Try a shorter/more specific requirement, or "
                 "split it into multiple generation runs."
             )
-
         if message.parsed_output is None:
             raise ValueError(
                 "The AI did not return a result matching the expected schema "
                 "(test_cases/summary)."
             )
+        return message
 
+    def generate_test_cases(self, system_prompt: str, requirement_text: str) -> dict:
+        """
+        Send the requirement + system prompt (already merged with the project
+        config) to Claude, and return a dict {"test_cases": [...], "summary":
+        {...}} validated against the schema (Structured Outputs), ready for
+        excel_exporter/app.py.
+        """
+        message = self._call_ai(
+            system_prompt,
+            f"Requirement/User Story to write test cases for:\n\n{requirement_text}",
+            GenerationResult,
+        )
         parsed_result = message.parsed_output.model_dump()
         result = build_edited_result(parsed_result, parsed_result["test_cases"])
         result["usage"] = self._build_usage(message.usage)
         return result
+
+    def review_test_cases(self, system_prompt: str, requirement_text: str, test_cases: list[dict]) -> dict:
+        """
+        Send the requirement + an existing test case set to Claude for a
+        coverage review. Returns {"review": {...ReviewResult...}, "usage": {...}}.
+        """
+        test_cases_json = json.dumps(test_cases, ensure_ascii=False, indent=2)
+        message = self._call_ai(
+            system_prompt,
+            (
+                f"Requirement/User Story:\n\n{requirement_text}\n\n"
+                f"Existing test cases (JSON):\n\n{test_cases_json}"
+            ),
+            ReviewResult,
+        )
+        return {
+            "review": message.parsed_output.model_dump(),
+            "usage": self._build_usage(message.usage),
+        }

@@ -4,7 +4,7 @@ import anthropic
 import httpx2
 import pytest
 
-from core.ai_client import AIClient, GenerationResult
+from core.ai_client import AIClient, GenerationResult, ReviewResult
 
 
 VALID_RESULT = GenerationResult.model_validate(
@@ -182,3 +182,51 @@ def test_gives_up_after_max_retries_on_connection_error():
         client.generate_test_cases("system", "requirement")
 
     assert messages.calls == 2  # 1 initial attempt + 1 retry
+
+
+VALID_REVIEW = ReviewResult.model_validate(
+    {
+        "coverage_score": 80,
+        "missing_test_types": ["security"],
+        "gaps": [
+            {
+                "description": "No test for OTP resend after expiry",
+                "suggested_type": "Negative",
+                "severity": "High",
+            }
+        ],
+        "duplicates": [],
+        "summary_note": "Mostly covered; missing an OTP resend case.",
+    }
+)
+
+
+def test_review_test_cases_returns_review_and_usage():
+    response = SimpleNamespace(
+        parsed_output=VALID_REVIEW,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=50, output_tokens=30),
+    )
+    client, messages = make_client(response)
+
+    result = client.review_test_cases("system prompt", "requirement", [{"test_id": "TC_001"}])
+
+    assert messages.kwargs["output_format"] is ReviewResult
+    assert result["review"]["coverage_score"] == 80
+    assert result["review"]["gaps"][0]["severity"] == "High"
+    assert "usage" in result
+
+
+def test_review_test_cases_includes_test_cases_in_user_message():
+    response = SimpleNamespace(
+        parsed_output=VALID_REVIEW,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+    )
+    client, messages = make_client(response)
+
+    client.review_test_cases("system prompt", "req text", [{"test_id": "TC_001", "title": "X"}])
+
+    user_content = messages.kwargs["messages"][0]["content"]
+    assert "req text" in user_content
+    assert "TC_001" in user_content

@@ -1,4 +1,4 @@
-"""Test tích hợp cho app.py bằng Streamlit AppTest (mock AIClient, không gọi API thật)."""
+"""Integration tests for app.py using Streamlit AppTest (mocks AIClient, no real API calls)."""
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,17 +13,17 @@ FAKE_RESULT = {
         {
             "test_id": "TC_LOGIN_001",
             "module": "Login",
-            "title": "Đăng nhập thành công",
-            "precondition": "Có tài khoản hợp lệ",
-            "steps": "1. Nhập số điện thoại\n2. Nhập OTP",
-            "test_data": "SĐT: 0912345678",
-            "expected_result": "Vào được trang chủ",
+            "title": "Successful login",
+            "precondition": "Account is valid",
+            "steps": "1. Enter phone number\n2. Enter OTP",
+            "test_data": "Phone: 0912345678",
+            "expected_result": "Home page is reached",
             "priority": "High",
             "type": "Positive",
             "platform": "Web",
         }
     ],
-    "summary": {"total": 1, "by_type": {"positive": 1}, "open_questions": ["Rõ giới hạn OTP hết hạn?"]},
+    "summary": {"total": 1, "by_type": {"positive": 1}, "open_questions": ["How long until the OTP expires?"]},
     "usage": {
         "model": "claude-sonnet-5",
         "input_tokens": 100,
@@ -36,7 +36,7 @@ FAKE_RESULT = {
 }
 
 
-def _run_generation(monkeypatch, requirement="Là user, tôi muốn đăng nhập bằng OTP"):
+def _run_generation(monkeypatch, requirement="As a user, I want to log in with OTP"):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     with patch.object(AIClient, "generate_test_cases", return_value=FAKE_RESULT):
         at = AppTest.from_file(str(APP_PATH))
@@ -71,7 +71,7 @@ def test_empty_requirement_shows_warning_and_no_history(monkeypatch):
     at.button[0].click().run(timeout=30)
 
     assert not at.exception
-    assert any("Vui lòng nhập requirement" in w.value for w in at.warning)
+    assert any("Please enter a requirement" in w.value for w in at.warning)
     assert st_history_empty(at)
 
 
@@ -84,7 +84,7 @@ def test_requirement_too_long_shows_error(monkeypatch):
     at.button[0].click().run(timeout=30)
 
     assert not at.exception
-    assert any("quá dài" in e.value for e in at.error)
+    assert any("too long" in e.value for e in at.error)
     assert st_history_empty(at)
 
 

@@ -9,11 +9,11 @@ SAMPLE_RESULT = {
         {
             "test_id": "TC_LOGIN_001",
             "module": "Login",
-            "title": "Đăng nhập thành công với số điện thoại + OTP hợp lệ",
-            "precondition": "Tài khoản đã đăng ký, chưa đăng nhập",
-            "steps": "1. Nhập SĐT\n2. Nhập OTP đúng\n3. Nhấn Đăng nhập",
-            "test_data": "SĐT: 0912345678, OTP: 123456",
-            "expected_result": "Đăng nhập thành công, chuyển tới màn hình Home",
+            "title": "Successful login with valid phone number + OTP",
+            "precondition": "Account is registered, not logged in",
+            "steps": "1. Enter phone number\n2. Enter correct OTP\n3. Tap Login",
+            "test_data": "Phone: 0912345678, OTP: 123456",
+            "expected_result": "Login succeeds, redirected to the Home screen",
             "priority": "High",
             "type": "Positive",
             "platform": "All",
@@ -21,11 +21,11 @@ SAMPLE_RESULT = {
         {
             "test_id": "TC_LOGIN_002",
             "module": "Login",
-            "title": "Đăng nhập thất bại với OTP sai",
-            "precondition": "Tài khoản đã đăng ký",
-            "steps": "1. Nhập SĐT\n2. Nhập OTP sai",
+            "title": "Login fails with an incorrect OTP",
+            "precondition": "Account is registered",
+            "steps": "1. Enter phone number\n2. Enter incorrect OTP",
             "test_data": "OTP: 000000",
-            "expected_result": "Hiển thị lỗi 'OTP không đúng'",
+            "expected_result": "Shows the error 'Incorrect OTP'",
             "priority": "Medium",
             "type": "Negative",
             "platform": "All",
@@ -34,7 +34,7 @@ SAMPLE_RESULT = {
     "summary": {
         "total": 2,
         "by_type": {"positive": 1, "negative": 1},
-        "open_questions": ["OTP hết hạn sau bao lâu?"],
+        "open_questions": ["How long until the OTP expires?"],
     },
 }
 
@@ -83,7 +83,7 @@ def test_summary_sheet_contains_totals_and_open_questions():
     flat_values = [v for row in rows for v in row if v is not None]
 
     assert 2 in flat_values  # total
-    assert "OTP hết hạn sau bao lâu?" in flat_values
+    assert "How long until the OTP expires?" in flat_values
 
 
 def test_export_with_no_test_cases_still_produces_file():
@@ -91,4 +91,4 @@ def test_export_with_no_test_cases_still_produces_file():
     excel_bytes = export_to_excel(result)
     wb = load_workbook(io.BytesIO(excel_bytes))
     ws = wb["Test Cases"]
-    assert ws.max_row == 1  # chỉ có header
+    assert ws.max_row == 1  # header row only

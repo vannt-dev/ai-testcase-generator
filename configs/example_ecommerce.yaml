@@ -12,15 +12,15 @@ test_types_required:
   - security
 
 domain_rules:
-  - "Số điện thoại VN: 10 số, bắt đầu bằng 0"
-  - "Giá tiền hiển thị dạng: 1.000.000 VNĐ"
-  - "Session hết hạn sau 30 phút không hoạt động"
-  - "Mật khẩu tối thiểu 8 ký tự, có ít nhất 1 chữ hoa, 1 số, 1 ký tự đặc biệt"
-  - "Giỏ hàng tối đa 50 sản phẩm khác nhau"
+  - "VN phone number: 10 digits, starts with 0"
+  - "Price is displayed as: 1,000,000 VND"
+  - "Session expires after 30 minutes of inactivity"
+  - "Password: minimum 8 characters, at least 1 uppercase letter, 1 digit, 1 special character"
+  - "Cart holds at most 50 distinct products"
 
 glossary:
-  SKU: "Mã định danh sản phẩm"
-  Voucher: "Mã giảm giá, áp dụng theo điều kiện đơn hàng"
-  Flash_sale: "Chương trình giảm giá theo khung giờ giới hạn"
+  SKU: "Product identifier code"
+  Voucher: "Discount code, applied based on order conditions"
+  Flash_sale: "Time-limited discount campaign"
 
-notes: "Ưu tiên test kỹ luồng thanh toán và áp dụng voucher vì đây là core business flow."
+notes: "Prioritize thorough testing of the checkout flow and voucher application since this is the core business flow."

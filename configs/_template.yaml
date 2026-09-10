@@ -1,15 +1,15 @@
 # =============================================================
-# TEMPLATE CONFIG — copy file này thành configs/<ten_project>.yaml
-# rồi điền lại thông tin để áp dụng cho project mới.
+# TEMPLATE CONFIG — copy this file to configs/<project_name>.yaml
+# and fill it in to apply it to a new project.
 # =============================================================
 
-project_name: "Tên project"
-platform: [web]   # có thể là [web], [ios, android], hoặc [web, ios, android]
+project_name: "Project name"
+platform: [web]   # can be [web], [ios, android], or [web, ios, android]
 
-# ID format cho test case, {MODULE} và {NUMBER} sẽ được AI tự thay thế
+# Test case ID format; {MODULE} and {NUMBER} are filled in by the AI
 test_id_format: "TC_{MODULE}_{NUMBER}"
 
-# Các loại test case bắt buộc phải cân nhắc khi sinh
+# Test case types that must be considered when generating
 test_types_required:
   - positive
   - negative
@@ -17,15 +17,15 @@ test_types_required:
   - ui_ux
   - compatibility
 
-# Các rule nghiệp vụ đặc thù của project — càng chi tiết, AI sinh case
-# càng chính xác, tránh phải sửa lại nhiều
+# Project-specific business rules — the more detailed, the more accurate
+# the AI's generated cases will be, reducing the need for rework
 domain_rules:
-  - "Ví dụ: Số điện thoại VN gồm 10 số, bắt đầu bằng 0"
-  - "Ví dụ: Mật khẩu tối thiểu 8 ký tự, có ít nhất 1 chữ hoa và 1 số"
+  - "Example: phone numbers have 10 digits and start with 0"
+  - "Example: password must be at least 8 characters, with 1 uppercase letter and 1 digit"
 
-# Giải thích các thuật ngữ riêng của hệ thống để AI hiểu đúng ngữ cảnh
+# Explain system-specific terminology so the AI understands the context correctly
 glossary:
-  Vi_du_thuat_ngu: "Giải thích ý nghĩa"
+  Example_term: "Explanation of its meaning"
 
-# Ghi chú thêm (tuỳ chọn) — bất kỳ ngữ cảnh nào khác muốn AI biết
+# Additional notes (optional) — any other context you want the AI to know
 notes: ""

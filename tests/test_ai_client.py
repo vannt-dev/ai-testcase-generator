@@ -13,11 +13,11 @@ VALID_RESULT = GenerationResult.model_validate(
             {
                 "test_id": "TC_LOGIN_001",
                 "module": "Login",
-                "title": "Đăng nhập thành công",
-                "precondition": "Có tài khoản",
-                "steps": "1. Đăng nhập",
-                "test_data": "Tài khoản hợp lệ",
-                "expected_result": "Mở trang chủ",
+                "title": "Successful login",
+                "precondition": "Account exists",
+                "steps": "1. Log in",
+                "test_data": "Valid account",
+                "expected_result": "Home page opens",
                 "priority": "High",
                 "type": "Positive",
                 "platform": "Web",
@@ -115,7 +115,7 @@ def test_max_tokens_response_has_clear_error():
     )
     client, _ = make_client(response)
 
-    with pytest.raises(ValueError, match="bị cắt"):
+    with pytest.raises(ValueError, match="cut off"):
         client.generate_test_cases("system", "requirement")
 
 
@@ -147,7 +147,7 @@ def test_retries_transient_errors_then_succeeds():
 
     assert result["summary"]["total"] == 1
     assert messages.calls == 3
-    assert sleeps == [1.0, 2.0]  # backoff tăng dần: 1s rồi 2s trước lần thử thứ 3
+    assert sleeps == [1.0, 2.0]  # increasing backoff: 1s then 2s before the 3rd attempt
 
 
 def test_gives_up_after_max_retries_on_rate_limit():
@@ -164,7 +164,7 @@ def test_gives_up_after_max_retries_on_rate_limit():
     with pytest.raises(ValueError, match="rate limit"):
         client.generate_test_cases("system", "requirement")
 
-    assert messages.calls == 3  # 1 lần thử đầu + 2 lần retry
+    assert messages.calls == 3  # 1 initial attempt + 2 retries
 
 
 def test_gives_up_after_max_retries_on_connection_error():
@@ -178,7 +178,7 @@ def test_gives_up_after_max_retries_on_connection_error():
         sleep_fn=lambda _seconds: None,
     )
 
-    with pytest.raises(ValueError, match="kết nối"):
+    with pytest.raises(ValueError, match="connect"):
         client.generate_test_cases("system", "requirement")
 
-    assert messages.calls == 2  # 1 lần thử đầu + 1 lần retry
+    assert messages.calls == 2  # 1 initial attempt + 1 retry

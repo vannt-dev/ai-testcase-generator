@@ -29,15 +29,15 @@ def test_build_system_prompt_includes_base_prompt_and_project_context():
     config = load_project_config(CONFIGS_DIR / "example_ecommerce.yaml")
     prompt = build_system_prompt(config)
 
-    # Base prompt content phải có mặt
+    # Base prompt content must be present
     assert "Senior QA Engineer" in prompt
     assert '"test_cases"' in prompt
 
-    # Config project phải được ghép vào
+    # Project config must be merged in
     assert "E-commerce App Demo" in prompt
     assert "web, ios, android" in prompt
-    assert "Số điện thoại VN: 10 số, bắt đầu bằng 0" in prompt
-    assert "SKU: Mã định danh sản phẩm" in prompt
+    assert "VN phone number: 10 digits, starts with 0" in prompt
+    assert "SKU: Product identifier code" in prompt
 
 
 def test_build_system_prompt_handles_missing_optional_fields():
@@ -50,7 +50,7 @@ def test_build_system_prompt_handles_missing_optional_fields():
     prompt = build_system_prompt(minimal_config)
 
     assert "Minimal Project" in prompt
-    assert "(Không có)" in prompt  # domain_rules và glossary rỗng
+    assert "(None)" in prompt  # empty domain_rules and glossary
 
 
 def test_load_project_config_reports_missing_required_fields(tmp_path):
@@ -70,7 +70,7 @@ def test_load_project_config_reports_invalid_yaml(tmp_path):
     config_path = tmp_path / "broken.yaml"
     config_path.write_text("project_name: [broken\n", encoding="utf-8")
 
-    with pytest.raises(ProjectConfigError, match="sai cú pháp YAML"):
+    with pytest.raises(ProjectConfigError, match="invalid YAML syntax"):
         load_project_config(config_path)
 
 
@@ -92,11 +92,11 @@ test_types_required: [Positive, positive, Security]
 
 
 def test_estimate_prompt_size_warning_none_for_short_prompt():
-    assert estimate_prompt_size_warning("prompt ngắn") is None
+    assert estimate_prompt_size_warning("short prompt") is None
 
 
 def test_estimate_prompt_size_warning_flags_large_prompt():
-    huge_prompt = "a" * 40000  # ~10,000 token ước tính, vượt ngưỡng 8,000
+    huge_prompt = "a" * 40000  # ~10,000 estimated tokens, exceeds the 8,000 threshold
 
     warning = estimate_prompt_size_warning(huge_prompt)
 

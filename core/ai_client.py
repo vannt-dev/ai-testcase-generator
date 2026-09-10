@@ -1,5 +1,5 @@
 """
-Module chịu trách nhiệm gọi Claude API để sinh test case.
+Module responsible for calling the Claude API to generate test cases.
 """
 import os
 import time
@@ -13,12 +13,12 @@ from core.result_utils import build_edited_result
 
 DEFAULT_MODEL = "claude-sonnet-5"
 
-# Số lần thử lại tối đa khi gặp lỗi tạm thời (rate limit / mất kết nối),
-# với backoff tăng dần: retry_backoff_seconds * 2^(lần thử - 1).
+# Max number of retries for transient errors (rate limit / connection loss),
+# with increasing backoff: retry_backoff_seconds * 2^(attempt - 1).
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_BACKOFF_SECONDS = 1.0
 
-# USD trên một triệu token. Cache write dùng TTL mặc định 5 phút.
+# USD per one million tokens. Cache writes use the default 5-minute TTL.
 MODEL_PRICING = {
     "claude-sonnet-5": {
         "input": 2.0,
@@ -70,8 +70,8 @@ class AIClient:
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         if client is None and not self.api_key:
             raise ValueError(
-                "Chưa có ANTHROPIC_API_KEY. Hãy set biến môi trường hoặc "
-                "truyền api_key khi khởi tạo AIClient."
+                "ANTHROPIC_API_KEY is missing. Set the environment variable or "
+                "pass api_key when constructing AIClient."
             )
         self.client = client or anthropic.Anthropic(api_key=self.api_key)
         self.model = model
@@ -109,9 +109,10 @@ class AIClient:
 
     def generate_test_cases(self, system_prompt: str, requirement_text: str) -> dict:
         """
-        Gửi requirement + system prompt (đã ghép config project) tới Claude,
-        trả về dict {"test_cases": [...], "summary": {...}} đã được validate
-        theo schema (Structured Outputs), sẵn sàng cho excel_exporter/app.py.
+        Send the requirement + system prompt (already merged with the project
+        config) to Claude, and return a dict {"test_cases": [...], "summary":
+        {...}} validated against the schema (Structured Outputs), ready for
+        excel_exporter/app.py.
         """
         attempt = 0
         while True:
@@ -119,8 +120,8 @@ class AIClient:
                 message = self.client.messages.parse(
                     model=self.model,
                     max_tokens=16000,
-                    # Cache base prompt + config project: không đổi giữa các lần
-                    # sinh test case trong cùng 1 session/project -> giảm chi phí.
+                    # Cache the base prompt + project config: unchanged across
+                    # generations within the same session/project -> lowers cost.
                     system=[
                         {
                             "type": "text",
@@ -131,38 +132,39 @@ class AIClient:
                     messages=[
                         {
                             "role": "user",
-                            "content": f"Requirement/User Story cần viết test case:\n\n{requirement_text}",
+                            "content": f"Requirement/User Story to write test cases for:\n\n{requirement_text}",
                         }
                     ],
                     output_format=GenerationResult,
                 )
                 break
             except anthropic.AuthenticationError:
-                raise ValueError("API key không hợp lệ. Vui lòng kiểm tra lại ANTHROPIC_API_KEY.")
+                raise ValueError("Invalid API key. Please check your ANTHROPIC_API_KEY.")
             except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
                 attempt += 1
                 if attempt > self.max_retries:
                     if isinstance(e, anthropic.RateLimitError):
                         raise ValueError(
-                            "Đã vượt rate limit của Anthropic API. Vui lòng thử lại sau ít phút."
+                            "Anthropic API rate limit exceeded. Please try again in a few minutes."
                         ) from e
                     raise ValueError(
-                        "Không kết nối được tới Anthropic API. Kiểm tra lại kết nối mạng."
+                        "Could not connect to the Anthropic API. Check your network connection."
                     ) from e
                 self._sleep(self.retry_backoff_seconds * (2 ** (attempt - 1)))
             except anthropic.APIStatusError as e:
-                raise ValueError(f"Anthropic API trả về lỗi ({e.status_code}): {e.message}")
+                raise ValueError(f"Anthropic API returned an error ({e.status_code}): {e.message}")
 
         if message.stop_reason == "max_tokens":
             raise ValueError(
-                "Phản hồi của AI bị cắt do vượt giới hạn max_tokens trước khi hoàn "
-                "thành JSON. Hãy thử requirement ngắn/cụ thể hơn, hoặc tách nhỏ thành "
-                "nhiều lần sinh test case."
+                "The AI's response was cut off after exceeding max_tokens before "
+                "finishing the JSON. Try a shorter/more specific requirement, or "
+                "split it into multiple generation runs."
             )
 
         if message.parsed_output is None:
             raise ValueError(
-                "AI không trả về kết quả đúng schema mong đợi (test_cases/summary)."
+                "The AI did not return a result matching the expected schema "
+                "(test_cases/summary)."
             )
 
         parsed_result = message.parsed_output.model_dump()

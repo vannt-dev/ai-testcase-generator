@@ -1,4 +1,4 @@
-"""Chuẩn hóa kết quả sau khi AI sinh hoặc người dùng chỉnh sửa trên UI."""
+"""Normalize results after AI generation or user edits made in the UI."""
 
 TEST_CASE_FIELDS = (
     "test_id",
@@ -25,7 +25,7 @@ TYPE_KEYS = {
 
 
 def normalize_edited_records(records: list[dict]) -> list[dict]:
-    """Lọc dòng trống và chỉ giữ các cột test case được hỗ trợ."""
+    """Drop blank rows and keep only the supported test case columns."""
     normalized = []
     for record in records:
         cleaned = {
@@ -38,7 +38,7 @@ def normalize_edited_records(records: list[dict]) -> list[dict]:
 
 
 def find_incomplete_rows(test_cases: list[dict]) -> list[int]:
-    """Trả về số thứ tự (bắt đầu từ 1) của các dòng còn thiếu dữ liệu."""
+    """Return 1-based row numbers for rows still missing required data."""
     return [
         index
         for index, test_case in enumerate(test_cases, start=1)
@@ -47,7 +47,7 @@ def find_incomplete_rows(test_cases: list[dict]) -> list[int]:
 
 
 def build_edited_result(original_result: dict, test_cases: list[dict]) -> dict:
-    """Ghép dữ liệu đã sửa và tính lại summary để UI/Excel luôn đồng bộ."""
+    """Merge edited data and recompute the summary so UI/Excel stay in sync."""
     by_type = {key: 0 for key in TYPE_KEYS.values()}
     for test_case in test_cases:
         type_key = TYPE_KEYS.get(test_case.get("type"))

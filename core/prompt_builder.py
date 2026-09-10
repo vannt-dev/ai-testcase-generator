@@ -1,6 +1,6 @@
 """
-Module ghép base system prompt với config đặc thù của từng project (YAML)
-để tạo ra system prompt cuối cùng gửi cho AI.
+Merges the base system prompt with each project's config (YAML) to
+produce the final system prompt sent to the AI.
 """
 from pathlib import Path
 from typing import Literal
@@ -10,15 +10,16 @@ import yaml
 
 BASE_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "base_system_prompt.md"
 
-# Ước lượng token ~ số ký tự / 4 (kinh nghiệm chung cho text tiếng Anh/Việt).
-# Ngưỡng cảnh báo khi domain_rules/glossary quá dài, làm tăng chi phí input
-# mỗi lần gọi API (system prompt được cache nhưng vẫn tính phí cache write).
+# Rough token estimate ~ character count / 4 (common rule of thumb for
+# English/Vietnamese text). Threshold used to warn when domain_rules/
+# glossary get too long, which increases input cost per API call (the
+# system prompt is cached but cache writes are still billed).
 CHARS_PER_TOKEN_ESTIMATE = 4
 SYSTEM_PROMPT_TOKEN_WARNING_THRESHOLD = 8000
 
 
 class ProjectConfigError(ValueError):
-    """Lỗi cấu hình project có nội dung thân thiện để hiển thị trên UI."""
+    """Project config error with a user-friendly message for the UI."""
 
 
 class ProjectConfig(BaseModel):
@@ -54,14 +55,14 @@ class ProjectConfig(BaseModel):
     def validate_test_id_format(cls, value: str) -> str:
         missing = [token for token in ("{MODULE}", "{NUMBER}") if token not in value]
         if missing:
-            raise ValueError(f"phải chứa placeholder: {', '.join(missing)}")
+            raise ValueError(f"must contain placeholder(s): {', '.join(missing)}")
         return value
 
     @field_validator("domain_rules")
     @classmethod
     def validate_domain_rules(cls, value: list[str]) -> list[str]:
         if any(not rule.strip() for rule in value):
-            raise ValueError("không được chứa rule rỗng")
+            raise ValueError("must not contain empty rules")
         return value
 
 
@@ -71,7 +72,7 @@ def _format_validation_error(config_path: Path, error: ValidationError) -> Proje
         field = ".".join(str(part) for part in item["loc"])
         details.append(f"- {field}: {item['msg']}")
     return ProjectConfigError(
-        f"Config '{config_path.name}' không hợp lệ:\n" + "\n".join(details)
+        f"Config '{config_path.name}' is invalid:\n" + "\n".join(details)
     )
 
 
@@ -85,17 +86,17 @@ def load_project_config(config_path: str | Path) -> dict:
         with config_path.open("r", encoding="utf-8") as f:
             raw_config = yaml.safe_load(f)
     except FileNotFoundError as error:
-        raise ProjectConfigError(f"Không tìm thấy config: {config_path}") from error
+        raise ProjectConfigError(f"Config not found: {config_path}") from error
     except OSError as error:
-        raise ProjectConfigError(f"Không đọc được config '{config_path.name}': {error}") from error
+        raise ProjectConfigError(f"Could not read config '{config_path.name}': {error}") from error
     except yaml.YAMLError as error:
         raise ProjectConfigError(
-            f"Config '{config_path.name}' sai cú pháp YAML: {error}"
+            f"Config '{config_path.name}' has invalid YAML syntax: {error}"
         ) from error
 
     if not isinstance(raw_config, dict):
         raise ProjectConfigError(
-            f"Config '{config_path.name}' phải là một YAML object, không được rỗng."
+            f"Config '{config_path.name}' must be a non-empty YAML object."
         )
 
     try:
@@ -106,31 +107,32 @@ def load_project_config(config_path: str | Path) -> dict:
 
 def build_system_prompt(config: dict) -> str:
     """
-    Ghép base prompt + thông tin config project thành 1 system prompt hoàn chỉnh.
+    Merge the base prompt with the project config info into one final
+    system prompt.
     """
     base_prompt = load_base_prompt()
 
-    domain_rules = "\n".join(f"- {rule}" for rule in config.get("domain_rules", [])) or "- (Không có)"
+    domain_rules = "\n".join(f"- {rule}" for rule in config.get("domain_rules", [])) or "- (None)"
     glossary = "\n".join(
         f"- {term}: {definition}" for term, definition in config.get("glossary", {}).items()
-    ) or "- (Không có)"
+    ) or "- (None)"
     platforms = ", ".join(config.get("platform", ["Web"]))
     required_types = ", ".join(config.get("test_types_required", []))
 
     project_context = f"""
 
-===================== CẤU HÌNH PROJECT: {config.get("project_name", "N/A")} =====================
-Nền tảng áp dụng: {platforms}
+===================== PROJECT CONFIG: {config.get("project_name", "N/A")} =====================
+Target platforms: {platforms}
 Test ID format: {config.get("test_id_format", "TC_{MODULE}_{NUMBER}")}
-Các loại test case bắt buộc cân nhắc: {required_types}
+Test types required to be considered: {required_types}
 
-Domain rules (bắt buộc tuân thủ khi sinh test case):
+Domain rules (must be followed when generating test cases):
 {domain_rules}
 
-Glossary (thuật ngữ riêng của hệ thống):
+Glossary (system-specific terminology):
 {glossary}
 
-Ghi chú thêm: {config.get("notes", "(Không có)")}
+Additional notes: {config.get("notes", "(None)")}
 =================================================================================================
 """
     return base_prompt + project_context
@@ -138,21 +140,21 @@ Ghi chú thêm: {config.get("notes", "(Không có)")}
 
 def estimate_prompt_size_warning(prompt: str) -> str | None:
     """
-    Trả về cảnh báo (hoặc None) nếu system prompt ước tính vượt ngưỡng token,
-    để UI báo trước cho người dùng biết chi phí input có thể tăng.
+    Return a warning (or None) if the estimated system prompt size exceeds
+    the token threshold, so the UI can warn about rising input cost.
     """
     estimated_tokens = len(prompt) // CHARS_PER_TOKEN_ESTIMATE
     if estimated_tokens <= SYSTEM_PROMPT_TOKEN_WARNING_THRESHOLD:
         return None
     return (
-        f"System prompt của project này khá lớn (~{estimated_tokens:,} token ước tính). "
-        "Domain rules/glossary dài sẽ làm tăng chi phí input mỗi lần gọi API — "
-        "cân nhắc rút gọn nếu không thực sự cần thiết."
+        f"This project's system prompt is quite large (~{estimated_tokens:,} "
+        "estimated tokens). Long domain rules/glossary entries increase input "
+        "cost on every API call — consider trimming them if not strictly needed."
     )
 
 
 def list_available_configs(configs_dir: str | Path = "configs") -> list[str]:
-    """Liệt kê các file config project khả dụng (bỏ qua template)."""
+    """List available project config files (excluding the template)."""
     configs_dir = Path(configs_dir)
     return sorted(
         f.stem for f in configs_dir.glob("*.yaml") if not f.stem.startswith("_")

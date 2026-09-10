@@ -1,6 +1,6 @@
 """
-Module xuất bộ test case (dict trả về từ AI) ra file Excel (.xlsx)
-theo format chuẩn, có style cơ bản để dễ đọc.
+Exports a test case set (the dict returned by the AI) to an Excel (.xlsx)
+file in a standard format, with basic styling for readability.
 """
 import io
 from openpyxl import Workbook
@@ -29,8 +29,8 @@ PRIORITY_COLORS = {
 
 def export_to_excel(result: dict, sheet_name: str = "Test Cases") -> bytes:
     """
-    Nhận dict {"test_cases": [...], "summary": {...}} và trả về
-    nội dung file .xlsx dạng bytes, sẵn sàng để tải xuống hoặc lưu file.
+    Takes a dict {"test_cases": [...], "summary": {...}} and returns the
+    .xlsx file content as bytes, ready to download or save to disk.
     """
     wb = Workbook()
     ws = wb.active
@@ -62,17 +62,17 @@ def export_to_excel(result: dict, sheet_name: str = "Test Cases") -> bytes:
 
     ws.freeze_panes = "A2"
 
-    # Sheet phụ: Summary
+    # Secondary sheet: Summary
     summary = result.get("summary", {})
     if summary:
         ws2 = wb.create_sheet("Summary")
-        ws2.append(["Tổng số test case", summary.get("total", len(test_cases))])
+        ws2.append(["Total test cases", summary.get("total", len(test_cases))])
         ws2.append([])
-        ws2.append(["Loại", "Số lượng"])
+        ws2.append(["Type", "Count"])
         for k, v in summary.get("by_type", {}).items():
             ws2.append([k, v])
         ws2.append([])
-        ws2.append(["Câu hỏi cần confirm thêm với BA/Dev"])
+        ws2.append(["Open questions to confirm with BA/Dev"])
         for q in summary.get("open_questions", []):
             ws2.append([q])
         ws2.column_dimensions["A"].width = 45

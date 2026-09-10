@@ -1,48 +1,51 @@
-# Cách thêm một project mới
+# How to add a new project
 
-Tool này được thiết kế để dùng chung 1 core engine cho nhiều project khác
-nhau — mỗi project chỉ cần 1 file config riêng, không cần sửa code.
+This tool is designed to share a single core engine across many different
+projects — each project only needs its own config file, no code changes
+required.
 
-## Các bước
+## Steps
 
-1. Copy file template:
+1. Copy the template file:
    ```bash
-   cp configs/_template.yaml configs/<ten_project_cua_ban>.yaml
+   cp configs/_template.yaml configs/<your_project_name>.yaml
    ```
-   Tên file (không tính `.yaml`) sẽ là tên hiển thị trong dropdown chọn
-   project trên UI.
+   The file name (without `.yaml`) becomes the display name in the
+   project dropdown on the UI.
 
-2. Mở file vừa tạo và điền các thông tin:
-   - `project_name`: tên hiển thị đầy đủ
-   - `platform`: web / ios / android (có thể chọn nhiều)
-   - `test_id_format`: format ID test case theo convention của team bạn
-   - `test_types_required`: loại test case cần ưu tiên
-   - `domain_rules`: **quan trọng nhất** — càng chi tiết, AI sinh case
-     càng sát thực tế, ví dụ:
-     - Rule validate input (số điện thoại, email, mật khẩu...)
-     - Giới hạn nghiệp vụ (số lượng tối đa, thời gian timeout...)
-     - Hành vi đặc thù của hệ thống khi lỗi xảy ra
-   - `glossary`: giải nghĩa thuật ngữ riêng của hệ thống/domain, để AI
-     không hiểu sai ngữ cảnh
-   - `notes`: bất kỳ điều gì khác muốn AI lưu ý (VD: ưu tiên test kỹ
-     module nào)
+2. Open the new file and fill in:
+   - `project_name`: the full display name
+   - `platform`: web / ios / android (multiple allowed)
+   - `test_id_format`: the test case ID format matching your team's convention
+   - `test_types_required`: the test case types to prioritize
+   - `domain_rules`: **the most important field** — the more detailed,
+     the more realistic the AI's generated cases will be, e.g.:
+     - Input validation rules (phone number, email, password...)
+     - Business limits (max quantity, timeout duration...)
+     - System-specific behavior on error
+   - `glossary`: definitions of terms specific to your system/domain, so
+     the AI doesn't misread the context
+   - `notes`: anything else you want the AI to keep in mind (e.g. which
+     module to test most thoroughly)
 
-3. Chạy lại app (`streamlit run app.py`), project mới sẽ tự động xuất
-   hiện trong dropdown — không cần sửa code.
+3. Re-run the app (`streamlit run app.py`) — the new project will
+   automatically show up in the dropdown, no code changes needed.
 
-## Mẹo để config hiệu quả
+## Tips for effective configs
 
-- Bắt đầu với 1 config đơn giản, chạy thử với vài requirement thật, xem
-  AI sinh case có sát không, rồi bổ sung dần `domain_rules` dựa trên
-  những chỗ AI hiểu sai hoặc bỏ sót.
-- Nếu team có nhiều module với rule khác biệt lớn (VD: module Payment
-  và module User Profile), có thể cân nhắc chia nhỏ thành từng "sub-config"
-  hoặc note rõ trong `domain_rules` rule nào áp dụng cho module nào.
-- Định kỳ review lại config theo feedback từ tester dùng thực tế.
+- Start with a simple config, try it against a few real requirements,
+  see how accurate the AI's generated cases are, then gradually expand
+  `domain_rules` based on where the AI misunderstood or missed something.
+- If your team has modules with very different rules (e.g. a Payment
+  module vs. a User Profile module), consider splitting into separate
+  "sub-configs" or clearly noting in `domain_rules` which rule applies
+  to which module.
+- Periodically review the config based on feedback from testers using
+  it in practice.
 
-## Nếu muốn thay đổi logic sinh test case chung (áp dụng mọi project)
+## If you want to change the shared generation logic (applies to all projects)
 
-Sửa file `prompts/base_system_prompt.md`. File này chứa các quy tắc
-chung (bắt buộc phân loại test case, format JSON output...) áp dụng cho
-tất cả project. Không nên đặt thông tin đặc thù của 1 project cụ thể
-vào đây — hãy đặt vào file config YAML tương ứng.
+Edit `prompts/base_system_prompt.md`. This file contains the common
+rules (required test case classification, JSON output format...) that
+apply to every project. Project-specific information shouldn't go here
+— put it in the corresponding YAML config file instead.

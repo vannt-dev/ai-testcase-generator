@@ -2,55 +2,56 @@
 
 [![Tests](https://github.com/vannt-dev/ai-testcase-generator/actions/workflows/tests.yml/badge.svg)](https://github.com/vannt-dev/ai-testcase-generator/actions/workflows/tests.yml)
 
-Công cụ hỗ trợ **manual tester** sinh test case tự động từ requirement/user
-story bằng AI (Claude), xuất ra file Excel sẵn sàng sử dụng. Thiết kế để
-**áp dụng được cho bất kỳ project nào** — chỉ cần thêm 1 file config,
-không cần sửa code.
+A tool that helps **manual testers** automatically generate test cases from
+a requirement/user story using AI (Claude), and export them to a
+ready-to-use Excel file. Designed to be **applicable to any project** —
+just add one config file, no code changes needed.
 
-## Vì sao dùng tool này
+## Why use this tool
 
-- Giảm thời gian viết test case thủ công
-- Tăng coverage: AI thường nghĩ ra các edge case/negative case mà con
-  người dễ bỏ sót
-- Chuẩn hóa format test case giữa các thành viên trong team
-- Mở rộng dễ dàng cho nhiều project khác nhau nhờ hệ thống config tách biệt
-- Tự động thử lại khi gặp lỗi tạm thời (rate limit, mất kết nối) từ Anthropic API
-- Lưu lại lịch sử các lần sinh test case trong phiên làm việc để xem lại/khôi phục
+- Cuts down time spent writing test cases by hand
+- Improves coverage: the AI often comes up with edge/negative cases that
+  humans tend to miss
+- Standardizes test case format across team members
+- Easy to extend to different projects thanks to a decoupled config system
+- Automatically retries transient errors (rate limit, connection loss)
+  from the Anthropic API
+- Keeps a per-session history of generation runs to review/restore later
 
-## Kiến trúc
+## Architecture
 
 ```
-Core Engine (không đổi giữa các project)
+Core Engine (unchanged across projects)
         +
-Project Config (YAML — đổi theo từng project)
+Project Config (YAML — changes per project)
         =
-Test case phù hợp với domain/business rule riêng của project đó
+Test cases tailored to that project's domain/business rules
 ```
 
-## Cấu trúc thư mục
+## Directory structure
 
 ```
 ai-testcase-generator/
-├── app.py                       # Streamlit UI chính
+├── app.py                       # Main Streamlit UI
 ├── core/
-│   ├── ai_client.py              # Gọi Claude API (retry, pricing, structured output)
-│   ├── prompt_builder.py         # Ghép base prompt + config project
-│   ├── result_utils.py           # Chuẩn hóa/tính lại summary khi user chỉnh sửa
-│   └── excel_exporter.py         # Xuất kết quả ra .xlsx
+│   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
+│   ├── prompt_builder.py         # Merges the base prompt + project config
+│   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
+│   └── excel_exporter.py         # Exports results to .xlsx
 ├── configs/
-│   ├── _template.yaml            # Copy file này khi thêm project mới
-│   └── example_ecommerce.yaml    # Config mẫu
+│   ├── _template.yaml            # Copy this file when adding a new project
+│   └── example_ecommerce.yaml    # Sample config
 ├── prompts/
-│   └── base_system_prompt.md     # Prompt gốc, áp dụng chung mọi project
-├── tests/                        # pytest (core logic + integration test cho app.py)
-├── .github/workflows/tests.yml   # CI: chạy pytest trên mỗi push/PR
+│   └── base_system_prompt.md     # Base prompt shared across all projects
+├── tests/                        # pytest (core logic + app.py integration tests)
+├── .github/workflows/tests.yml   # CI: runs pytest on every push/PR
 └── docs/
     └── how-to-add-new-project.md
 ```
 
-## Cài đặt
+## Setup
 
-Yêu cầu Python >= 3.10 (code dùng cú pháp type hint `str | None`).
+Requires Python >= 3.10 (the code uses the `str | None` type hint syntax).
 
 ```bash
 git clone <repo-url>
@@ -60,70 +61,75 @@ source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Lấy Anthropic API key tại https://console.anthropic.com/, sau đó:
+Get an Anthropic API key at https://console.anthropic.com/, then:
 
 ```bash
 cp .env.example .env
-# Điền ANTHROPIC_API_KEY vào file .env
+# Fill in ANTHROPIC_API_KEY in the .env file
 ```
 
-(Hoặc bỏ qua bước này và nhập trực tiếp API key trong sidebar khi chạy app.)
+(Or skip this step and enter the API key directly in the sidebar when
+running the app.)
 
-## Chạy thử
+## Try it out
 
 ```bash
 streamlit run app.py
 ```
 
-Mở trình duyệt tại `http://localhost:8501`:
-1. Chọn project ở sidebar (mặc định có sẵn `example_ecommerce`)
-2. Paste requirement/user story vào ô nhập
-3. Nhấn **Sinh Test Case**
-4. Xem kết quả dạng bảng, tải file Excel
+Open your browser at `http://localhost:8501`:
+1. Select a project in the sidebar (defaults to `example_ecommerce`)
+2. Paste a requirement/user story into the text box
+3. Click **Generate Test Cases**
+4. View the results as a table, download the Excel file
 
-## Chạy test
+## Running tests
 
 ```bash
 pip install -r requirements-dev.txt
 pytest -q
 ```
 
-CI (GitHub Actions) tự động chạy toàn bộ test suite trên mỗi push/PR vào `main`.
+CI (GitHub Actions) automatically runs the full test suite on every
+push/PR to `main`.
 
-## Bảo mật
+## Security
 
-- API key nhập trong sidebar chỉ tồn tại trong `st.session_state` của phiên
-  trình duyệt hiện tại, không được ghi ra đĩa hay log lại.
-- Nếu deploy app này ở nơi công khai (Streamlit Cloud, server chung...),
-  **không** dựa vào ô nhập API key trên UI — hãy set biến môi trường
-  `ANTHROPIC_API_KEY` phía server/secrets manager và ẩn/bỏ ô nhập key đó đi,
-  để tránh lộ key qua session của người dùng khác hoặc qua log trình duyệt.
+- The API key entered in the sidebar only lives in `st.session_state`
+  for the current browser session — it's never written to disk or logged.
+- If deploying this app somewhere public (Streamlit Cloud, a shared
+  server...), **do not** rely on the UI's API key field — set the
+  `ANTHROPIC_API_KEY` environment variable on the server/secrets manager
+  and hide/remove that input field, to avoid leaking the key through
+  another user's session or browser logs.
 
-## Thêm project của bạn
+## Adding your own project
 
-Xem hướng dẫn chi tiết tại [`docs/how-to-add-new-project.md`](docs/how-to-add-new-project.md).
-Tóm tắt nhanh:
+See the detailed guide at
+[`docs/how-to-add-new-project.md`](docs/how-to-add-new-project.md).
+Quick summary:
 
 ```bash
-cp configs/_template.yaml configs/ten_project_cua_ban.yaml
-# Điền domain rules, glossary, platform... cho project của bạn
+cp configs/_template.yaml configs/your_project_name.yaml
+# Fill in domain rules, glossary, platform... for your project
 ```
 
 ## Roadmap
 
-- [x] Giai đoạn 1: Sinh test case từ requirement (MVP hiện tại)
-- [ ] Giai đoạn 2: Test Case Reviewer / Coverage Checker
-- [ ] Giai đoạn 3: AI-assisted Bug Report Writer + tích hợp Jira
-- [ ] Giai đoạn 4: Mở rộng sang automation (self-healing scripts, sinh code test)
+- [x] Phase 1: Generate test cases from a requirement (current MVP)
+- [ ] Phase 2: Test Case Reviewer / Coverage Checker
+- [ ] Phase 3: AI-assisted Bug Report Writer + Jira integration
+- [ ] Phase 4: Expand into automation (self-healing scripts, generated test code)
 
-## Lưu ý
+## Notes
 
-- AI sẽ hỏi lại nếu requirement thiếu thông tin quan trọng thay vì tự
-  suy đoán — nếu thấy phần "Cần confirm thêm với BA/Dev" xuất hiện,
-  hãy bổ sung thông tin và chạy lại.
-- Chất lượng test case phụ thuộc nhiều vào chất lượng `domain_rules`
-  trong file config — nên đầu tư thời gian hoàn thiện config cho từng
-  project.
+- The AI will ask for clarification instead of guessing if the
+  requirement is missing important information — if you see an
+  "Needs confirmation from BA/Dev" section appear, add the missing
+  details and run it again.
+- Test case quality depends heavily on the quality of `domain_rules`
+  in the config file — it's worth investing time to flesh out the
+  config for each project.
 
 ## License
 

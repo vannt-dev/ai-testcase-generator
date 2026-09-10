@@ -1,7 +1,7 @@
 """
 AI Test Case Generator — MVP UI (Streamlit)
 
-Chạy: streamlit run app.py
+Run: streamlit run app.py
 """
 import time
 from datetime import datetime
@@ -31,38 +31,39 @@ load_dotenv()
 st.set_page_config(page_title="AI Test Case Generator", page_icon="🧪", layout="wide")
 
 CONFIGS_DIR = Path("configs")
-# Giới hạn độ dài requirement để tránh vượt context/token limit của model
-# với thông báo lỗi khó hiểu — ~40,000 ký tự tương đương ~10,000 token.
+# Cap requirement length to avoid exceeding the model's context/token limit
+# with a confusing error — ~40,000 characters is roughly ~10,000 tokens.
 MAX_REQUIREMENT_CHARS = 40000
 MAX_HISTORY_ENTRIES = 10
 
 st.title("🧪 AI Test Case Generator")
-st.caption("Sinh test case tự động từ requirement — hỗ trợ manual tester")
+st.caption("Automatically generate test cases from a requirement — built for manual testers")
 
 # ---------- Sidebar ----------
 with st.sidebar:
-    st.header("⚙️ Cấu hình")
+    st.header("⚙️ Configuration")
 
     available_configs = list_available_configs(CONFIGS_DIR)
     if not available_configs:
-        st.error("Không tìm thấy file config nào trong thư mục configs/")
+        st.error("No config files found in the configs/ directory")
         st.stop()
 
-    selected_config = st.selectbox("Chọn project", available_configs)
+    selected_config = st.selectbox("Select project", available_configs)
 
     api_key = st.text_input(
         "Anthropic API Key",
         type="password",
         value=st.session_state.get("api_key", ""),
-        help="Có thể để trống nếu đã set biến môi trường ANTHROPIC_API_KEY",
+        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
     )
     if api_key:
         st.session_state["api_key"] = api_key
     if api_key:
         st.caption(
-            "⚠️ API key nhập ở đây chỉ lưu trong bộ nhớ phiên trình duyệt hiện tại "
-            "(không ghi ra đĩa). Nếu app này được deploy public, hãy ưu tiên set "
-            "biến môi trường `ANTHROPIC_API_KEY` phía server thay vì nhập tay ở đây."
+            "⚠️ The API key entered here is only kept in this browser session's "
+            "memory (never written to disk). If this app is deployed publicly, "
+            "set the `ANTHROPIC_API_KEY` environment variable on the server "
+            "instead of typing it in here."
         )
 
     st.divider()
@@ -73,21 +74,21 @@ with st.sidebar:
         st.stop()
     st.markdown(f"**Project:** {config.get('project_name')}")
     st.markdown(f"**Platform:** {', '.join(config.get('platform', []))}")
-    with st.expander("Xem chi tiết config"):
+    with st.expander("View config details"):
         st.json(config)
 
     history = st.session_state.setdefault("history", [])
     if history:
         st.divider()
-        st.subheader("🕘 Lịch sử phiên này")
+        st.subheader("🕘 This session's history")
         for index, entry in reversed(list(enumerate(history))):
             label = (
                 f"{entry['timestamp']} · {entry['project_name']} · "
-                f"{entry['test_case_count']} test case"
+                f"{entry['test_case_count']} test cases"
             )
             with st.expander(label):
                 st.caption(entry["requirement_excerpt"])
-                if st.button("↩️ Xem lại kết quả này", key=f"restore_history_{index}"):
+                if st.button("↩️ Restore this result", key=f"restore_history_{index}"):
                     st.session_state.pop("test_case_editor", None)
                     st.session_state["last_result"] = entry["result"]
                     st.session_state["last_project_name"] = entry["project_name"]
@@ -95,23 +96,23 @@ with st.sidebar:
 
 # ---------- Main ----------
 requirement_text = st.text_area(
-    "📋 Paste Requirement / User Story / Jira ticket vào đây",
+    "📋 Paste your Requirement / User Story / Jira ticket here",
     height=250,
-    placeholder="VD: Là một người dùng, tôi muốn đăng nhập bằng số điện thoại và OTP để...",
+    placeholder="E.g.: As a user, I want to log in with my phone number and OTP so that...",
 )
 
-generate_btn = st.button("🚀 Sinh Test Case", type="primary", use_container_width=False)
+generate_btn = st.button("🚀 Generate Test Cases", type="primary", use_container_width=False)
 
 if generate_btn:
     if not requirement_text.strip():
-        st.warning("Vui lòng nhập requirement trước.")
+        st.warning("Please enter a requirement first.")
         st.stop()
 
     if len(requirement_text) > MAX_REQUIREMENT_CHARS:
         st.error(
-            f"Requirement quá dài ({len(requirement_text):,} ký tự, giới hạn "
-            f"{MAX_REQUIREMENT_CHARS:,}). Hãy tách nhỏ requirement thành nhiều "
-            "phần và sinh test case riêng cho từng phần."
+            f"Requirement is too long ({len(requirement_text):,} characters, limit "
+            f"{MAX_REQUIREMENT_CHARS:,}). Split it into smaller parts and generate "
+            "test cases for each part separately."
         )
         st.stop()
 
@@ -127,15 +128,15 @@ if generate_btn:
         st.warning(prompt_warning)
 
     start_time = time.time()
-    with st.status("AI đang phân tích requirement và sinh test case...", expanded=False) as status:
+    with st.status("AI is analyzing the requirement and generating test cases...", expanded=False) as status:
         try:
             result = client.generate_test_cases(system_prompt, requirement_text)
         except ValueError as e:
-            status.update(label=f"Lỗi: {e}", state="error")
-            st.error(f"Có lỗi khi gọi AI: {e}")
+            status.update(label=f"Error: {e}", state="error")
+            st.error(f"Error calling the AI: {e}")
             st.stop()
         elapsed = time.time() - start_time
-        status.update(label=f"Hoàn tất trong {elapsed:.1f}s", state="complete")
+        status.update(label=f"Done in {elapsed:.1f}s", state="complete")
 
     st.session_state.pop("test_case_editor", None)
     st.session_state["last_result"] = result
@@ -153,16 +154,16 @@ if generate_btn:
     )
     del history[:-MAX_HISTORY_ENTRIES]
 
-# ---------- Hiển thị kết quả ----------
+# ---------- Display results ----------
 if "last_result" in st.session_state:
     result = st.session_state["last_result"]
     test_cases = result.get("test_cases", [])
 
     if not test_cases:
-        st.warning("AI không sinh được test case nào — có thể do requirement thiếu thông tin.")
+        st.warning("The AI did not generate any test cases — the requirement may be missing information.")
     else:
-        st.subheader("✏️ Chỉnh sửa test case")
-        st.caption("Bạn có thể sửa trực tiếp, thêm hoặc xóa dòng trước khi tải Excel.")
+        st.subheader("✏️ Edit test cases")
+        st.caption("You can edit cells directly, add or delete rows before downloading the Excel file.")
 
         df = pd.DataFrame(test_cases)
         edited_df = st.data_editor(
@@ -192,10 +193,10 @@ if "last_result" in st.session_state:
         edited_result = build_edited_result(result, edited_test_cases)
         summary = edited_result["summary"]
 
-        st.success(f"Bộ dữ liệu hiện có {len(edited_test_cases)} test case.")
+        st.success(f"Current dataset has {len(edited_test_cases)} test cases.")
 
-        with st.expander("Xem thống kê theo loại", expanded=True):
-            st.metric("Tổng số test case", summary.get("total", len(test_cases)))
+        with st.expander("View stats by type", expanded=True):
+            st.metric("Total test cases", summary.get("total", len(test_cases)))
             for k, v in summary.get("by_type", {}).items():
                 if v:
                     st.write(f"**{k}**: {v}")
@@ -203,14 +204,14 @@ if "last_result" in st.session_state:
         incomplete_rows = find_incomplete_rows(edited_test_cases)
         if incomplete_rows:
             st.error(
-                "Chưa thể export: các dòng sau còn thiếu dữ liệu bắt buộc: "
+                "Cannot export yet: the following rows are missing required data: "
                 + ", ".join(map(str, incomplete_rows))
             )
 
         excel_bytes = export_to_excel(edited_result)
         export_project_name = st.session_state.get("last_project_name", "project")
         st.download_button(
-            "⬇️ Tải xuống Excel",
+            "⬇️ Download Excel",
             data=excel_bytes,
             file_name=f"testcases_{export_project_name.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -221,16 +222,16 @@ if "last_result" in st.session_state:
     open_questions = summary.get("open_questions", [])
     if open_questions:
         st.divider()
-        st.subheader("❓ Cần confirm thêm với BA/Dev")
+        st.subheader("❓ Needs confirmation from BA/Dev")
         for q in open_questions:
             st.markdown(f"- {q}")
 
     usage = result.get("usage", {})
     if usage:
         st.divider()
-        st.subheader("📊 Token usage & chi phí ước tính")
+        st.subheader("📊 Token usage & estimated cost")
         usage_cols = st.columns(5)
-        usage_cols[0].metric("Input mới", f"{usage.get('input_tokens', 0):,}")
+        usage_cols[0].metric("New input", f"{usage.get('input_tokens', 0):,}")
         usage_cols[1].metric("Output", f"{usage.get('output_tokens', 0):,}")
         usage_cols[2].metric(
             "Cache write", f"{usage.get('cache_creation_input_tokens', 0):,}"
@@ -240,15 +241,15 @@ if "last_result" in st.session_state:
         )
         estimated_cost = usage.get("estimated_cost_usd")
         usage_cols[4].metric(
-            "Ước tính (USD)",
+            "Estimated (USD)",
             f"${estimated_cost:.6f}" if estimated_cost is not None else "N/A",
         )
         st.caption(
-            f"Model: {usage.get('model', 'N/A')}. Chi phí là ước tính theo bảng giá "
-            "Claude API và có thể khác hóa đơn thực tế."
+            f"Model: {usage.get('model', 'N/A')}. Cost is an estimate based on "
+            "Claude API pricing and may differ from your actual invoice."
         )
         if estimated_cost is None:
             st.caption(
-                f"⚠️ Chưa có bảng giá cho model `{usage.get('model', 'N/A')}` trong "
-                "`MODEL_PRICING` (core/ai_client.py) nên không thể ước tính chi phí."
+                f"⚠️ No pricing found for model `{usage.get('model', 'N/A')}` in "
+                "`MODEL_PRICING` (core/ai_client.py), so cost could not be estimated."
             )

@@ -68,6 +68,11 @@ def test_parse_uploaded_file_rejects_empty_file():
         parse_uploaded_file(uploaded)
 
 
+def test_parse_uploaded_file_rejects_empty_csv():
+    with pytest.raises(FileImportError, match="no data rows"):
+        parse_uploaded_file(FakeUploadedFile("empty.csv", b""))
+
+
 def test_parse_uploaded_file_rejects_too_many_rows():
     content = _make_xlsx_bytes(["ID"], [[f"TC_{i}"] for i in range(MAX_IMPORTED_ROWS + 1)])
     uploaded = FakeUploadedFile("huge.xlsx", content)
@@ -138,4 +143,22 @@ def test_parse_uploaded_csv_rejects_invalid_utf8():
     uploaded = FakeUploadedFile("bad.csv", b"\x80\x81\x82")
 
     with pytest.raises(FileImportError, match="UTF-8"):
+        parse_uploaded_file(uploaded)
+
+
+@pytest.mark.parametrize("extension", ["csv", "xlsx"])
+def test_parse_uploaded_file_rejects_duplicate_headers(extension):
+    if extension == "csv":
+        content = b"ID,ID\nTC_001,TC_002\n"
+    else:
+        content = _make_xlsx_bytes(["ID", "ID"], [["TC_001", "TC_002"]])
+
+    with pytest.raises(FileImportError, match="duplicate column headers.*ID"):
+        parse_uploaded_file(FakeUploadedFile(f"duplicate.{extension}", content))
+
+
+def test_parse_uploaded_csv_rejects_row_wider_than_headers():
+    uploaded = FakeUploadedFile("wide.csv", b"ID,Title\nTC_001,Login works,unexpected\n")
+
+    with pytest.raises(FileImportError, match="more values than the header row"):
         parse_uploaded_file(uploaded)

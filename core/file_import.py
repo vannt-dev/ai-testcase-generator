@@ -1,6 +1,7 @@
 """Parses uploaded test case files (.xlsx/.csv) into raw rows, independent of any target schema."""
 import csv
 import io
+from collections import Counter
 
 import openpyxl
 
@@ -43,14 +44,38 @@ def _too_many_rows_error() -> FileImportError:
     )
 
 
+def _normalize_headers(raw_headers) -> list[str]:
+    """Return stripped string headers and reject ambiguous column names."""
+    headers = [str(header).strip() if header is not None else "" for header in raw_headers]
+    usable_headers = [header for header in headers if header]
+    duplicates = sorted(
+        header for header, count in Counter(usable_headers).items() if count > 1
+    )
+    if duplicates:
+        raise FileImportError(
+            "The uploaded file has duplicate column headers: " + ", ".join(duplicates)
+        )
+    if not usable_headers:
+        raise FileImportError("The uploaded file has no named columns.")
+    return headers
+
+
 def _parse_csv(raw_bytes: bytes) -> list[dict]:
     try:
         text = raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as error:
         raise FileImportError(f"Could not read the CSV file as UTF-8: {error}") from error
     reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames is None:
+        return []
+    headers = _normalize_headers(reader.fieldnames)
+    reader.fieldnames = headers
     rows = []
     for row in reader:
+        if None in row:
+            raise FileImportError(
+                "A CSV data row has more values than the header row."
+            )
         if len(rows) >= MAX_IMPORTED_ROWS:
             # Stop as soon as the cap is exceeded so a hostile file cannot
             # be fully materialized in memory first.
@@ -68,7 +93,7 @@ def _parse_xlsx(raw_bytes: bytes) -> list[dict]:
     sheet = workbook.active
     rows_iter = sheet.iter_rows(values_only=True)
     try:
-        headers = [str(h).strip() if h is not None else "" for h in next(rows_iter)]
+        headers = _normalize_headers(next(rows_iter))
     except StopIteration:
         return []
 

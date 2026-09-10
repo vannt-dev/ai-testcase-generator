@@ -82,12 +82,20 @@ def test_review_from_session_shows_coverage_report(monkeypatch):
     _seed_session_state(at)
     at.run(timeout=30)
 
-    with patch.object(AIClient, "review_test_cases", return_value=FAKE_REVIEW):
+    captured = {}
+
+    def _review(system_prompt, requirement_text, test_cases):
+        captured["system_prompt"] = system_prompt
+        return FAKE_REVIEW
+
+    with patch.object(AIClient, "review_test_cases", side_effect=_review):
         at.button(key="review_session_btn").click().run(timeout=30)
 
     assert not at.exception
     assert at.session_state["review_result"]["coverage_score"] == 72
     assert any("72" in m.value for m in at.metric)
+    assert "only report on them" in captured["system_prompt"]
+    assert "write a complete, detailed set" not in captured["system_prompt"]
 
 
 def test_review_from_uploaded_file_shows_coverage_report(monkeypatch):
@@ -183,11 +191,19 @@ def test_generate_missing_cases_and_merge(monkeypatch):
     with patch.object(AIClient, "review_test_cases", return_value=FAKE_REVIEW):
         at.button(key="review_session_btn").click().run(timeout=30)
 
-    with patch.object(AIClient, "generate_missing_cases", return_value=FAKE_MISSING_CASES):
+    captured = {}
+
+    def _generate(system_prompt, requirement_text, gaps):
+        captured["system_prompt"] = system_prompt
+        return FAKE_MISSING_CASES
+
+    with patch.object(AIClient, "generate_missing_cases", side_effect=_generate):
         at.button(key="generate_missing_btn").click().run(timeout=30)
 
     assert not at.exception
     assert len(at.session_state["generated_missing_cases"]) == 1
+    assert "write a complete, detailed set" in captured["system_prompt"]
+    assert "only report on them" not in captured["system_prompt"]
 
     at.button(key="merge_btn").click().run(timeout=30)
 

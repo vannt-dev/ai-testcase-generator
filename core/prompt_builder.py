@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 import yaml
 
 BASE_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "base_system_prompt.md"
+REVIEWER_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "reviewer_system_prompt.md"
+COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "column_mapping_system_prompt.md"
 
 # Rough token estimate ~ character count / 4 (common rule of thumb for
 # English/Vietnamese text). Threshold used to warn when domain_rules/
@@ -76,8 +78,12 @@ def _format_validation_error(config_path: Path, error: ValidationError) -> Proje
     )
 
 
-def load_base_prompt() -> str:
-    return BASE_PROMPT_PATH.read_text(encoding="utf-8")
+def load_base_prompt(path: Path = BASE_PROMPT_PATH) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def load_column_mapping_prompt() -> str:
+    return COLUMN_MAPPING_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def load_project_config(config_path: str | Path) -> dict:
@@ -105,12 +111,13 @@ def load_project_config(config_path: str | Path) -> dict:
         raise _format_validation_error(config_path, error) from error
 
 
-def build_system_prompt(config: dict) -> str:
+def build_system_prompt(config: dict, base_prompt_path: Path = BASE_PROMPT_PATH) -> str:
     """
-    Merge the base prompt with the project config info into one final
-    system prompt.
+    Merge a base prompt with the project config info into one final
+    system prompt. `base_prompt_path` defaults to the Generator's base
+    prompt; pass REVIEWER_PROMPT_PATH to build the Reviewer's instead.
     """
-    base_prompt = load_base_prompt()
+    base_prompt = load_base_prompt(base_prompt_path)
 
     domain_rules = "\n".join(f"- {rule}" for rule in config.get("domain_rules", [])) or "- (None)"
     glossary = "\n".join(

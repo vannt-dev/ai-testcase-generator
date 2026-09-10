@@ -102,3 +102,31 @@ def test_estimate_prompt_size_warning_flags_large_prompt():
 
     assert warning is not None
     assert "10,000" in warning
+
+
+def test_build_system_prompt_accepts_custom_base_prompt_path(tmp_path):
+    custom_prompt_path = tmp_path / "custom_base.md"
+    custom_prompt_path.write_text("CUSTOM BASE PROMPT CONTENT", encoding="utf-8")
+    config = {
+        "project_name": "Demo",
+        "platform": ["web"],
+        "test_id_format": "TC_{MODULE}_{NUMBER}",
+        "test_types_required": ["positive"],
+    }
+
+    prompt = build_system_prompt(config, base_prompt_path=custom_prompt_path)
+
+    assert prompt.startswith("CUSTOM BASE PROMPT CONTENT")
+    assert "Demo" in prompt
+
+
+def test_reviewer_prompt_file_exists_and_is_non_empty():
+    from core.prompt_builder import REVIEWER_PROMPT_PATH
+
+    assert REVIEWER_PROMPT_PATH.read_text(encoding="utf-8").strip()
+
+
+def test_load_column_mapping_prompt_returns_non_empty_text():
+    from core.prompt_builder import load_column_mapping_prompt
+
+    assert load_column_mapping_prompt().strip()

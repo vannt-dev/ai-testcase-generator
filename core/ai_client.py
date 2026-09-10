@@ -52,7 +52,7 @@ class TestCaseSummary(BaseModel):
     open_questions: list[str]
 
 
-class TestCaseGenerationResult(BaseModel):
+class GenerationResult(BaseModel):
     test_cases: list[TestCase]
     summary: TestCaseSummary
 
@@ -134,7 +134,7 @@ class AIClient:
                             "content": f"Requirement/User Story cần viết test case:\n\n{requirement_text}",
                         }
                     ],
-                    output_format=TestCaseGenerationResult,
+                    output_format=GenerationResult,
                 )
                 break
             except anthropic.AuthenticationError:

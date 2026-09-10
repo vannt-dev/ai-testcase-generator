@@ -4,10 +4,10 @@ import anthropic
 import httpx2
 import pytest
 
-from core.ai_client import AIClient, TestCaseGenerationResult
+from core.ai_client import AIClient, GenerationResult
 
 
-VALID_RESULT = TestCaseGenerationResult.model_validate(
+VALID_RESULT = GenerationResult.model_validate(
     {
         "test_cases": [
             {
@@ -86,7 +86,7 @@ def test_generate_uses_structured_output_and_prompt_cache():
 
     result = client.generate_test_cases("system prompt", "requirement")
 
-    assert messages.kwargs["output_format"] is TestCaseGenerationResult
+    assert messages.kwargs["output_format"] is GenerationResult
     assert messages.kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert result["summary"]["total"] == 1
     assert result["summary"]["by_type"]["positive"] == 1

@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/vannt-dev/ai-testcase-generator/actions/workflows/tests.yml/badge.svg)](https://github.com/vannt-dev/ai-testcase-generator/actions/workflows/tests.yml)
 
+**[Live demo](https://ai-testcase-gen.streamlit.app/)** · **[Demo page](https://vannt-dev.github.io/ai-testcase-generator/)**
+
 A tool that helps **manual testers** automatically generate test cases from
 a requirement/user story using AI (Claude), and export them to a
 ready-to-use Excel file. Designed to be **applicable to any project** —

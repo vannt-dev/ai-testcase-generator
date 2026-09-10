@@ -1,7 +1,9 @@
 """Integration tests for pages/1_Reviewer.py using Streamlit AppTest."""
+import io
 from pathlib import Path
 from unittest.mock import patch
 
+import openpyxl
 from streamlit.testing.v1 import AppTest
 
 from core.ai_client import AIClient
@@ -20,6 +22,24 @@ FAKE_REVIEW = {
     },
     "usage": {"model": "claude-sonnet-5", "estimated_cost_usd": 0.001},
 }
+
+FAKE_MAPPING = {
+    "mapping": {
+        "test_id": "ID", "module": "Module", "title": "Title", "precondition": "Precondition",
+        "steps": "Steps", "test_data": "Data", "expected_result": "Expected",
+        "priority": "Priority", "type": "Type", "platform": "Platform",
+    }
+}
+
+
+def _make_xlsx_bytes():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["ID", "Module", "Title", "Precondition", "Steps", "Data", "Expected", "Priority", "Type", "Platform"])
+    ws.append(["TC_001", "Login", "Login works", "Account exists", "1. Login", "Valid user", "Home shown", "High", "Positive", "Web"])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
 
 
 def _seed_session_state(at):
@@ -67,3 +87,54 @@ def test_review_from_session_shows_coverage_report(monkeypatch):
     assert not at.exception
     assert at.session_state["review_result"]["coverage_score"] == 72
     assert any("72" in m.value for m in at.metric)
+
+
+def test_review_from_uploaded_file_shows_coverage_report(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    at.run(timeout=30)
+
+    with patch.object(AIClient, "suggest_column_mapping", return_value=FAKE_MAPPING), \
+         patch.object(AIClient, "review_test_cases", return_value=FAKE_REVIEW):
+        at.file_uploader(key="upload_file").upload(
+            "cases.xlsx", _make_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ).run(timeout=30)
+        at.selectbox(key="upload_project_select").select("example_ecommerce").run(timeout=30)
+        at.text_area(key="upload_requirement_text").set_value("As a user, I want to log in").run(timeout=30)
+        at.button(key="review_upload_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert at.session_state["review_result"]["coverage_score"] == 72
+
+
+def test_upload_review_button_enables_once_mapping_is_confirmed(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    at.run(timeout=30)
+
+    with patch.object(AIClient, "suggest_column_mapping", return_value=FAKE_MAPPING):
+        at.file_uploader(key="upload_file").upload(
+            "cases.xlsx", _make_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ).run(timeout=30)
+
+    assert not at.exception
+    assert at.button(key="review_upload_btn").disabled is False
+
+
+def test_upload_review_button_disabled_when_mapping_incomplete(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    at.run(timeout=30)
+
+    incomplete_mapping = {"mapping": {**FAKE_MAPPING["mapping"], "expected_result": ""}}
+    with patch.object(AIClient, "suggest_column_mapping", return_value=incomplete_mapping):
+        at.file_uploader(key="upload_file").upload(
+            "cases.xlsx", _make_xlsx_bytes(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ).run(timeout=30)
+
+    assert not at.exception
+    assert at.button(key="review_upload_btn").disabled is True
+    assert any("Map every field" in w.value for w in at.warning)

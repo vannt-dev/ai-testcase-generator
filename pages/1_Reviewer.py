@@ -8,7 +8,16 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
-from core.prompt_builder import REVIEWER_PROMPT_PATH, build_system_prompt
+from core.file_import import FileImportError, parse_uploaded_file
+from core.prompt_builder import (
+    REVIEWER_PROMPT_PATH,
+    build_system_prompt,
+    list_available_configs,
+    load_column_mapping_prompt,
+    load_project_config,
+)
+from core.result_utils import TEST_CASE_FIELDS
+from core.review_utils import apply_column_mapping
 
 load_dotenv()
 
@@ -82,7 +91,59 @@ with session_tab:
             )
 
 with upload_tab:
-    st.info("Upload support is added in a later task.")
+    uploaded_file = st.file_uploader("Upload test cases", type=["xlsx", "csv"], key="upload_file")
+    available_configs = list_available_configs(CONFIGS_DIR)
+    upload_project = st.selectbox("Project", available_configs, key="upload_project_select")
+    upload_requirement = st.text_area(
+        "Requirement this test set should cover",
+        height=150,
+        key="upload_requirement_text",
+    )
+
+    if uploaded_file is not None:
+        try:
+            raw_rows = parse_uploaded_file(uploaded_file)
+        except FileImportError as e:
+            st.error(str(e))
+            raw_rows = None
+
+        if raw_rows:
+            if st.session_state.get("mapped_file_name") != uploaded_file.name:
+                try:
+                    client = AIClient(api_key=st.session_state.get("api_key") or None)
+                    headers = list(raw_rows[0].keys())
+                    suggestion = client.suggest_column_mapping(
+                        load_column_mapping_prompt(), headers, raw_rows[:5]
+                    )
+                    st.session_state["column_mapping_suggestion"] = suggestion["mapping"]
+                except ValueError as e:
+                    st.error(f"Could not get a column mapping suggestion: {e}")
+                    st.session_state["column_mapping_suggestion"] = {}
+                st.session_state["mapped_file_name"] = uploaded_file.name
+
+            st.markdown("**Confirm column mapping:**")
+            headers = list(raw_rows[0].keys())
+            header_options = [""] + headers
+            suggestion = st.session_state.get("column_mapping_suggestion", {})
+            confirmed_mapping = {}
+            for field in TEST_CASE_FIELDS:
+                suggested = suggestion.get(field, "")
+                default_index = header_options.index(suggested) if suggested in header_options else 0
+                confirmed_mapping[field] = st.selectbox(
+                    field, header_options, index=default_index, key=f"mapping_{field}"
+                )
+
+            mapping_complete = all(confirmed_mapping.values())
+            if not mapping_complete:
+                st.warning("Map every field above before reviewing.")
+
+            if st.button("🔍 Review Coverage", key="review_upload_btn", disabled=not mapping_complete):
+                if not upload_requirement.strip():
+                    st.warning("Please enter the requirement text first.")
+                else:
+                    normalized = apply_column_mapping(raw_rows, confirmed_mapping)
+                    project_config = load_project_config(CONFIGS_DIR / f"{upload_project}.yaml")
+                    _run_review(upload_requirement, project_config, normalized)
 
 if "review_result" in st.session_state:
     _render_review_result(st.session_state["review_result"])

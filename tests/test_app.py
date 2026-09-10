@@ -63,6 +63,28 @@ def test_generate_flow_records_history(monkeypatch):
     assert len(history) == 1
     assert history[0]["test_case_count"] == 1
     assert history[0]["project_name"] == at.session_state["last_project_name"]
+    # The entry must carry the config/requirement it was generated with so the
+    # Reviewer page reviews a restored entry against its own context.
+    assert history[0]["config"] == at.session_state["last_config"]
+    assert history[0]["requirement_text"] == at.session_state["last_requirement_text"]
+
+
+def test_restoring_history_entry_restores_its_config_and_requirement(monkeypatch):
+    at = _run_generation(monkeypatch, requirement="First requirement about OTP login")
+
+    # Simulate a later generation having overwritten last_config /
+    # last_requirement_text with a different project's context.
+    at.session_state["last_config"] = {"project_name": "Some Other Project"}
+    at.session_state["last_requirement_text"] = "A totally different requirement"
+    at.run(timeout=30)
+
+    entry = at.session_state["history"][0]
+    at.button(key="restore_history_0").click().run(timeout=30)
+
+    assert not at.exception
+    assert at.session_state["last_config"] == entry["config"]
+    assert at.session_state["last_requirement_text"] == "First requirement about OTP login"
+    assert at.session_state["last_project_name"] == entry["project_name"]
 
 
 def test_empty_requirement_shows_warning_and_no_history(monkeypatch):

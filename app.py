@@ -92,6 +92,11 @@ with st.sidebar:
                     st.session_state.pop("test_case_editor", None)
                     st.session_state["last_result"] = entry["result"]
                     st.session_state["last_project_name"] = entry["project_name"]
+                    # Restore the config/requirement too, so the Reviewer page
+                    # reviews this entry's test cases against *its* project
+                    # config and requirement, not the most recent generation's.
+                    st.session_state["last_config"] = entry["config"]
+                    st.session_state["last_requirement_text"] = entry["requirement_text"]
                     st.rerun()
 
 # ---------- Main ----------
@@ -152,6 +157,8 @@ if generate_btn:
             "requirement_excerpt": requirement_text.strip()[:200],
             "test_case_count": len(result.get("test_cases", [])),
             "result": result,
+            "config": config,
+            "requirement_text": requirement_text,
         }
     )
     del history[:-MAX_HISTORY_ENTRIES]

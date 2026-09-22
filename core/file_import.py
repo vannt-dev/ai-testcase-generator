@@ -6,6 +6,9 @@ from collections import Counter
 import openpyxl
 
 MAX_IMPORTED_ROWS = 500
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_IMPORTED_COLUMNS = 256
+MAX_FIELD_CHARS = 131072
 
 
 class FileImportError(ValueError):
@@ -30,7 +33,15 @@ def parse_uploaded_file(uploaded_file) -> list[dict]:
         )
 
     raw_bytes = uploaded_file.getvalue()
-    rows = _parse_csv(raw_bytes) if suffix == "csv" else _parse_xlsx(raw_bytes)
+    if len(raw_bytes) > MAX_UPLOAD_BYTES:
+        raise FileImportError("The uploaded file exceeds the 10 MiB size limit.")
+    try:
+        rows = _parse_csv(raw_bytes) if suffix == "csv" else _parse_xlsx(raw_bytes)
+    except FileImportError:
+        raise
+    except (csv.Error, ValueError, OSError) as error:
+        # Parsing is lazy: failures can occur while reading headers or later rows.
+        raise FileImportError(f"Could not read the uploaded {suffix.upper()} file: {error}") from error
 
     if not rows:
         raise FileImportError("The uploaded file has no data rows.")
@@ -46,6 +57,7 @@ def _too_many_rows_error() -> FileImportError:
 
 def _normalize_headers(raw_headers) -> list[str]:
     """Return stripped string headers and reject ambiguous column names."""
+    _validate_cells(raw_headers)
     headers = [str(header).strip() if header is not None else "" for header in raw_headers]
     usable_headers = [header for header in headers if header]
     duplicates = sorted(
@@ -58,6 +70,13 @@ def _normalize_headers(raw_headers) -> list[str]:
     if not usable_headers:
         raise FileImportError("The uploaded file has no named columns.")
     return headers
+
+
+def _validate_cells(values) -> None:
+    if len(values) > MAX_IMPORTED_COLUMNS:
+        raise FileImportError(f"The uploaded file exceeds the {MAX_IMPORTED_COLUMNS} column limit.")
+    if any(isinstance(value, str) and len(value) > MAX_FIELD_CHARS for value in values):
+        raise FileImportError(f"An uploaded field exceeds the {MAX_FIELD_CHARS:,} character limit.")
 
 
 def _parse_csv(raw_bytes: bytes) -> list[dict]:
@@ -76,6 +95,7 @@ def _parse_csv(raw_bytes: bytes) -> list[dict]:
             raise FileImportError(
                 "A CSV data row has more values than the header row."
             )
+        _validate_cells(list(row.values()))
         if len(rows) >= MAX_IMPORTED_ROWS:
             # Stop as soon as the cap is exceeded so a hostile file cannot
             # be fully materialized in memory first.
@@ -90,22 +110,31 @@ def _parse_xlsx(raw_bytes: bytes) -> list[dict]:
     except Exception as error:
         raise FileImportError(f"Could not read the Excel file: {error}") from error
 
-    sheet = workbook.active
-    rows_iter = sheet.iter_rows(values_only=True)
     try:
-        headers = _normalize_headers(next(rows_iter))
-    except StopIteration:
-        return []
+        sheet = workbook.active
+        if sheet is None:
+            raise FileImportError("The Excel file has no active worksheet.")
+        if sheet.max_column and sheet.max_column > MAX_IMPORTED_COLUMNS:
+            raise FileImportError(f"The uploaded file exceeds the {MAX_IMPORTED_COLUMNS} column limit.")
+        rows_iter = sheet.iter_rows(values_only=True)
+        try:
+            headers = _normalize_headers(next(rows_iter))
+        except StopIteration:
+            return []
 
-    rows = []
-    for values in rows_iter:
-        if all(v is None for v in values):
-            continue
-        if len(rows) >= MAX_IMPORTED_ROWS:
-            # Stop as soon as the cap is exceeded so a hostile file cannot
-            # be fully materialized in memory first.
-            raise _too_many_rows_error()
-        # A malformed file can yield a row shorter than the header row —
-        # pad the missing trailing columns instead of raising IndexError.
-        rows.append({h: (values[i] if i < len(values) else None) for i, h in enumerate(headers)})
-    return rows
+        rows = []
+        for values in rows_iter:
+            _validate_cells(values)
+            if all(v is None for v in values):
+                continue
+            if len(rows) >= MAX_IMPORTED_ROWS:
+                raise _too_many_rows_error()
+            rows.append({h: (values[i] if i < len(values) else None) for i, h in enumerate(headers)})
+        return rows
+    except FileImportError:
+        raise
+    except Exception as error:
+        # XML/ZIP errors can surface only when a read-only worksheet is consumed.
+        raise FileImportError(f"Could not read the Excel file: {error}") from error
+    finally:
+        workbook.close()

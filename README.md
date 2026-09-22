@@ -133,9 +133,11 @@ push/PR to `main`. The current feature suite contains **95 tests**.
   `ANTHROPIC_API_KEY` environment variable on the server/secrets manager
   and hide/remove that input field, to avoid leaking the key through
   another user's session or browser logs.
-- Uploaded files are limited to 500 data rows. Ambiguous duplicate headers
-  and malformed wide CSV rows are rejected, and mapped spreadsheet-formula
-  prefixes are neutralized before a reviewed set can be exported.
+- Uploaded files are limited to 10 MiB, 500 data rows, 256 columns, and
+  131,072 characters per field (the CSV parser may impose a lower field limit).
+  Ambiguous headers, malformed rows, and lazy Excel parsing errors produce
+  import errors. Exported text, including generated/editor values and summary
+  questions, stays literal even when it begins with a spreadsheet formula prefix.
 
 ## Adding your own project
 

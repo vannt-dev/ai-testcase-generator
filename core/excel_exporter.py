@@ -52,6 +52,9 @@ def export_to_excel(result: dict, sheet_name: str = "Test Cases") -> bytes:
     for row_idx, tc in enumerate(test_cases, start=2):
         for col_idx, (key, _, _) in enumerate(COLUMNS, start=1):
             cell = ws.cell(row=row_idx, column=col_idx, value=tc.get(key, ""))
+            # AI output and editor values are text even when they start with '='.
+            if isinstance(cell.value, str):
+                cell.data_type = "s"
             cell.alignment = wrap_alignment
             if key == "priority" and tc.get(key) in PRIORITY_COLORS:
                 cell.fill = PatternFill(
@@ -75,6 +78,10 @@ def export_to_excel(result: dict, sheet_name: str = "Test Cases") -> bytes:
         ws2.append(["Open questions to confirm with BA/Dev"])
         for q in summary.get("open_questions", []):
             ws2.append([q])
+        for row in ws2.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, str):
+                    cell.data_type = "s"
         ws2.column_dimensions["A"].width = 45
         ws2.column_dimensions["B"].width = 15
 

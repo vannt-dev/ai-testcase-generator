@@ -1,4 +1,7 @@
+import csv
 import io
+from unittest.mock import Mock
+from xml.etree.ElementTree import ParseError
 
 import openpyxl
 import pytest
@@ -13,6 +16,45 @@ class FakeUploadedFile:
 
     def getvalue(self) -> bytes:
         return self._content
+
+
+def test_long_csv_field_is_reported_as_a_user_facing_import_error():
+    content = ("Title\n" + "x" * (csv.field_size_limit() + 1)).encode()
+    with pytest.raises(FileImportError, match="Could not read.*CSV"):
+        parse_uploaded_file(FakeUploadedFile("long.csv", content))
+
+
+@pytest.mark.parametrize("header_read", [True, False])
+def test_lazy_excel_errors_are_reported_and_workbook_is_closed(monkeypatch, header_read):
+    def rows():
+        if not header_read:
+            yield ("Title",)
+        raise ParseError("malformed worksheet")
+
+    workbook = Mock()
+    workbook.active.max_column = 1
+    workbook.active.iter_rows.return_value = rows()
+    monkeypatch.setattr(openpyxl, "load_workbook", lambda *args, **kwargs: workbook)
+    with pytest.raises(FileImportError, match="Could not read the Excel file"):
+        parse_uploaded_file(FakeUploadedFile("broken.xlsx", b"fixture"))
+    workbook.close.assert_called_once()
+
+
+def test_upload_size_limit_precedes_parsing():
+    from core.file_import import MAX_UPLOAD_BYTES
+
+    with pytest.raises(FileImportError, match="size limit"):
+        parse_uploaded_file(FakeUploadedFile("large.csv", b"x" * (MAX_UPLOAD_BYTES + 1)))
+
+
+@pytest.mark.parametrize("extension", ["csv", "xlsx"])
+def test_upload_column_limit(extension):
+    from core.file_import import MAX_IMPORTED_COLUMNS
+
+    headers = [f"field{i}" for i in range(MAX_IMPORTED_COLUMNS + 1)]
+    content = (",".join(headers) + "\n" + ",".join(headers)).encode() if extension == "csv" else _make_xlsx_bytes(headers, [headers])
+    with pytest.raises(FileImportError, match="column limit"):
+        parse_uploaded_file(FakeUploadedFile(f"wide.{extension}", content))
 
 
 def _make_xlsx_bytes(headers, rows):
@@ -123,12 +165,17 @@ def test_parse_xlsx_pads_short_data_row_with_none(monkeypatch):
     import core.file_import as file_import
 
     class _FakeSheet:
+        max_column = 3
+
         def iter_rows(self, values_only=True):
             yield ("ID", "Title", "Extra")
             yield ("TC_001", "Login works")  # short row
 
     class _FakeWorkbook:
         active = _FakeSheet()
+
+        def close(self):
+            pass
 
     monkeypatch.setattr(
         file_import.openpyxl, "load_workbook", lambda *args, **kwargs: _FakeWorkbook()

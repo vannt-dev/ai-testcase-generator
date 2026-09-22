@@ -1,8 +1,29 @@
+import copy
 import io
+
+import pytest
 
 from openpyxl import load_workbook
 
 from core.excel_exporter import export_to_excel
+
+
+@pytest.mark.parametrize("text", ["=1+1", "+1", "-1", "@test", "=HYPERLINK(\"https://example.invalid\")"])
+def test_export_keeps_generated_edited_and_summary_text_literal(text):
+    result = copy.deepcopy(SAMPLE_RESULT)
+    for field in result["test_cases"][0]:
+        result["test_cases"][0][field] = text
+    result["summary"]["open_questions"] = [text]
+    result["summary"]["by_type"] = {text: 1}
+    workbook = load_workbook(io.BytesIO(export_to_excel(result)))
+    for cell in workbook["Test Cases"][2]:
+        assert cell.value == text
+        assert cell.data_type == "s"
+    summary_cells = [cell for row in workbook["Summary"] for cell in row if cell.value == text]
+    assert len(summary_cells) == 2
+    assert all(cell.data_type == "s" for cell in summary_cells)
+    assert workbook["Summary"]["B1"].data_type == "n"
+
 
 SAMPLE_RESULT = {
     "test_cases": [

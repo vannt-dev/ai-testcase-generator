@@ -20,6 +20,7 @@ from core.prompt_builder import (
 )
 from core.ai_client import AIClient
 from core.excel_exporter import export_to_excel
+from core.version import __version__
 from core.result_utils import (
     build_edited_result,
     find_incomplete_rows,
@@ -41,6 +42,7 @@ st.caption("Automatically generate test cases from a requirement — built for m
 
 # ---------- Sidebar ----------
 with st.sidebar:
+    st.caption(f"Version {__version__}")
     st.header("⚙️ Configuration")
 
     available_configs = list_available_configs(CONFIGS_DIR)

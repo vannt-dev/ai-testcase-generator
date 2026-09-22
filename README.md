@@ -68,7 +68,7 @@ ai-testcase-generator/
 Requires Python >= 3.10 (the code uses the `str | None` type hint syntax).
 
 ```bash
-git clone <repo-url>
+git clone --branch v0.1.0 --depth 1 https://github.com/vannt-dev/ai-testcase-generator.git
 cd ai-testcase-generator
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
@@ -122,7 +122,18 @@ pytest -q
 ```
 
 CI (GitHub Actions) automatically runs the full test suite on every
-push/PR to `main`. The current feature suite contains **95 tests**.
+push/PR to `main`. Release 0.1.0 includes 106 tests.
+
+## Releases and upgrades
+
+Version **0.1.0** is distributed as a Streamlit application, not a PyPI library.
+Download the source archive from [GitHub Releases](https://github.com/vannt-dev/ai-testcase-generator/releases)
+or use the versioned clone command above, install `requirements.txt`, then run `streamlit run app.py`.
+For an upgrade, use a fresh checkout of the selected tag and copy only your own project YAML
+configuration into `configs/`. Keep API keys in your local environment or the sidebar, outside Git.
+
+The hosted demo may update independently of a tagged release. The sidebar identifies the running
+application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload limits.
 
 ## Security
 

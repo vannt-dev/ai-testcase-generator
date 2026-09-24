@@ -307,3 +307,33 @@ def test_review_test_cases_serializes_non_json_native_cell_values():
     )
 
     assert str(created) in messages.kwargs["messages"][0]["content"]
+
+
+def test_sdk_client_does_not_stack_its_own_retries():
+    # The app's retry loop is the single retry policy; SDK retries would multiply attempts.
+    client = AIClient(api_key="sk-ant-test")
+
+    assert client.client.max_retries == 0
+
+
+def test_retries_server_errors_then_succeeds():
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    overloaded = anthropic.APIStatusError(
+        "overloaded", response=httpx2.Response(529, request=request), body=None
+    )
+    response = SimpleNamespace(
+        parsed_output=VALID_RESULT,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=10),
+    )
+    messages = FlakyMessages(overloaded, fail_times=1, response=response)
+    client = AIClient(
+        model="claude-sonnet-5",
+        client=SimpleNamespace(messages=messages),
+        max_retries=2,
+        retry_backoff_seconds=0.0,
+        sleep_fn=lambda _seconds: None,
+    )
+
+    assert client.generate_test_cases("system", "requirement")["summary"]["total"] == 1
+    assert messages.calls == 2

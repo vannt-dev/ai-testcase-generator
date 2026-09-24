@@ -5,6 +5,8 @@
 - Keep uploaded review values literal. Values such as `-1`, `- Open the app` and `+84 ...` were
   previously stored with a leading `'`, corrupting the review prompt, editor and export. Excel
   export still writes every string as a literal text cell.
+- Retry transient 5xx/overloaded API errors in the app's single retry loop; the SDK's own retries
+  are disabled so one generation no longer makes up to 12 attempts.
 
 ## 0.1.0 - 2026-09-22
 

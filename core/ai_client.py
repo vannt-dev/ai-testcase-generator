@@ -99,7 +99,8 @@ class AIClient:
                 "ANTHROPIC_API_KEY is missing. Set the environment variable or "
                 "pass api_key when constructing AIClient."
             )
-        self.client = client or anthropic.Anthropic(api_key=self.api_key)
+        # This class owns the retry policy; SDK retries underneath it would multiply attempts.
+        self.client = client or anthropic.Anthropic(api_key=self.api_key, max_retries=0)
         self.model = model
         self.max_retries = max_retries
         self.retry_backoff_seconds = retry_backoff_seconds
@@ -160,7 +161,11 @@ class AIClient:
                 break
             except anthropic.AuthenticationError:
                 raise ValueError("Invalid API key. Please check your ANTHROPIC_API_KEY.")
-            except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
+            except anthropic.APIStatusError as e:
+                if not isinstance(e, anthropic.RateLimitError) and e.status_code < 500:
+                    raise ValueError(
+                        f"Anthropic API returned an error ({e.status_code}): {e.message}"
+                    ) from e
                 attempt += 1
                 if attempt > self.max_retries:
                     if isinstance(e, anthropic.RateLimitError):
@@ -168,11 +173,17 @@ class AIClient:
                             "Anthropic API rate limit exceeded. Please try again in a few minutes."
                         ) from e
                     raise ValueError(
+                        f"Anthropic API is temporarily unavailable ({e.status_code}). "
+                        "Please try again later."
+                    ) from e
+                self._sleep(self.retry_backoff_seconds * (2 ** (attempt - 1)))
+            except anthropic.APIConnectionError as e:
+                attempt += 1
+                if attempt > self.max_retries:
+                    raise ValueError(
                         "Could not connect to the Anthropic API. Check your network connection."
                     ) from e
                 self._sleep(self.retry_backoff_seconds * (2 ** (attempt - 1)))
-            except anthropic.APIStatusError as e:
-                raise ValueError(f"Anthropic API returned an error ({e.status_code}): {e.message}")
 
         if message.stop_reason == "max_tokens":
             raise ValueError(

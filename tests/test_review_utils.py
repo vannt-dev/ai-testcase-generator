@@ -54,21 +54,30 @@ def test_apply_column_mapping_preserves_falsy_but_valid_values():
     assert result[0]["title"] == "False"
 
 
-def test_apply_column_mapping_quote_prefixes_formula_injection():
-    raw_rows = [{"ID": '=HYPERLINK("http://evil","click")'}]
-    mapping = {"test_id": "ID"}
+@pytest.mark.parametrize(
+    "value", ["-1", "- Open the app\n- Tap Login", "+84 912 345 678", "@admin", "=1+1"]
+)
+def test_apply_column_mapping_keeps_uploaded_values_literal(value):
+    # Negative boundaries, bullet steps and phone numbers are ordinary test data.
+    result = apply_column_mapping([{"ID": value}], {"test_id": "ID"})
 
-    result = apply_column_mapping(raw_rows, mapping)
-
-    assert result[0]["test_id"].startswith("'=")
-    assert not result[0]["test_id"].startswith("=")
+    assert result[0]["test_id"] == value
 
 
-@pytest.mark.parametrize("dangerous", ["=1+1", "+1", "-1+1", "@SUM(A1)"])
-def test_apply_column_mapping_quote_prefixes_all_formula_triggers(dangerous):
-    result = apply_column_mapping([{"ID": dangerous}], {"test_id": "ID"})
+def test_formula_like_uploaded_values_export_as_text_cells():
+    # The spreadsheet injection guard lives in the exporter, which writes literal text cells.
+    import io
 
-    assert result[0]["test_id"] == "'" + dangerous
+    import openpyxl
+
+    from core.excel_exporter import export_to_excel
+
+    dangerous = '=HYPERLINK("http://evil","click")'
+    rows = apply_column_mapping([{"ID": dangerous, "D": "-1"}], {"test_id": "ID", "test_data": "D"})
+    sheet = openpyxl.load_workbook(io.BytesIO(export_to_excel({"test_cases": rows}))).active
+
+    assert (sheet["A2"].value, sheet["A2"].data_type) == (dangerous, "s")
+    assert (sheet["F2"].value, sheet["F2"].data_type) == ("-1", "s")
 
 
 def test_apply_column_mapping_leaves_safe_values_untouched():

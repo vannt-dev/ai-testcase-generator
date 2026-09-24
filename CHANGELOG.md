@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 - 2026-09-24
 
 - Keep uploaded review values literal. Values such as `-1`, `- Open the app` and `+84 ...` were
   previously stored with a leading `'`, corrupting the review prompt, editor and export. Excel

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Keep uploaded review values literal. Values such as `-1`, `- Open the app` and `+84 ...` were
+  previously stored with a leading `'`, corrupting the review prompt, editor and export. Excel
+  export still writes every string as a literal text cell.
+
 ## 0.1.0 - 2026-09-22
 
 - First versioned public Streamlit application release, with configurable project requirements,

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Require `anthropic>=1.0.0`. The client and tests use the 1.x SDK (`httpx2`); the previous
+  `>=0.83.0` floor allowed installs that could not run the test suite.
+
 ## 0.1.1 - 2026-09-24
 
 - Keep uploaded review values literal. Values such as `-1`, `- Open the app` and `+84 ...` were

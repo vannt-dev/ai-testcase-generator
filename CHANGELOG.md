@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 - 2026-09-25
 
 - Require `anthropic>=1.0.0`. The client and tests use the 1.x SDK (`httpx2`); the previous
   `>=0.83.0` floor allowed installs that could not run the test suite.

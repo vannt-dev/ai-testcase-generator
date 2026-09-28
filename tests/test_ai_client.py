@@ -388,7 +388,8 @@ def test_write_bug_report_sends_related_test_case_as_json():
 
     content = messages.kwargs["messages"][0]["content"]
     assert "Related test case" in content
-    assert '"test_id": "TC_PAY_003"' in content
+    # indent=2 pretty-printing, not compact JSON
+    assert '{\n  "test_id": "TC_PAY_003"' in content
 
 
 def test_write_bug_report_sends_plain_text_related_case_verbatim():

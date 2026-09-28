@@ -109,12 +109,35 @@ def test_second_report_replaces_edited_fields(monkeypatch):
     at = _new_page(monkeypatch)
     _write(at)
     at.text_input(key="bug_title").set_value("My edited title").run(timeout=30)
+    at.selectbox(key="bug_severity").set_value("Trivial").run(timeout=30)
+    at.text_area(key="bug_steps").set_value("Edited step").run(timeout=30)
+    at.text_area(key="bug_open_questions").set_value("").run(timeout=30)
 
-    _write(at, notes="login button does nothing", result=_fake_result(title="Login button does nothing",
-                                                                       steps_to_reproduce=["Tap Login"]))
+    second = _fake_result(
+        title="Login button does nothing",
+        module="Login",
+        severity="Minor",
+        priority="Low",
+        environment="Chrome 140",
+        preconditions="On the login page",
+        steps_to_reproduce=["Tap Login"],
+        expected_result="The home page opens",
+        actual_result="Nothing happens",
+        test_data="user@example.com",
+        related_test_id="TC_LOGIN_001",
+        open_questions=["Does it happen on Safari?"],
+    )
+    _write(at, notes="login button does nothing", result=second)
 
-    assert at.text_input(key="bug_title").value == "Login button does nothing"
+    report = second["report"]
+    for field in ("title", "module", "environment", "test_data", "related_test_id"):
+        assert at.text_input(key=f"bug_{field}").value == report[field]
+    for field in ("preconditions", "expected_result", "actual_result"):
+        assert at.text_area(key=f"bug_{field}").value == report[field]
+    assert at.selectbox(key="bug_severity").value == "Minor"
+    assert at.selectbox(key="bug_priority").value == "Low"
     assert at.text_area(key="bug_steps").value == "Tap Login"
+    assert at.text_area(key="bug_open_questions").value == "Does it happen on Safari?"
 
 
 def test_related_case_json_is_parsed_and_text_is_kept(monkeypatch):

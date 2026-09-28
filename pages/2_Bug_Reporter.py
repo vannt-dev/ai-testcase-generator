@@ -66,24 +66,42 @@ def _related_context(text: str) -> dict | str | None:
     return value if isinstance(value, dict) else text
 
 
+def _lines(text: str) -> list[str]:
+    return [line.strip() for line in text.splitlines() if line.strip()]
+
+
 def _load_report(report: dict) -> None:
+    # The draft lives outside widget keys: Streamlit deletes the state of widgets that
+    # aren't rendered, so leaving this page would otherwise wipe the report and its edits.
+    draft = {field: report[field] for field in TEXT_FIELDS}
+    draft["severity"] = report["severity"]
+    draft["priority"] = report["priority"]
+    draft["steps"] = "\n".join(report["steps_to_reproduce"])
+    draft["open_questions"] = "\n".join(report["open_questions"])
+    st.session_state["bug_draft"] = draft
     # Overwrite every widget value so edits to a previous report never leak.
-    st.session_state["bug_report"] = report
-    for field in TEXT_FIELDS:
-        st.session_state[f"bug_{field}"] = report[field]
-    st.session_state["bug_severity"] = report["severity"]
-    st.session_state["bug_priority"] = report["priority"]
-    st.session_state["bug_steps"] = "\n".join(report["steps_to_reproduce"])
+    for key, value in draft.items():
+        st.session_state[f"bug_{key}"] = value
+
+
+def _restore_widgets() -> None:
+    for key, value in st.session_state["bug_draft"].items():
+        st.session_state.setdefault(f"bug_{key}", value)
+
+
+def _save_draft() -> None:
+    st.session_state["bug_draft"] = {
+        key: st.session_state[f"bug_{key}"] for key in st.session_state["bug_draft"]
+    }
 
 
 def _current_report() -> dict:
-    report = {field: st.session_state[f"bug_{field}"] for field in TEXT_FIELDS}
-    report["severity"] = st.session_state["bug_severity"]
-    report["priority"] = st.session_state["bug_priority"]
-    report["steps_to_reproduce"] = [
-        line.strip() for line in st.session_state["bug_steps"].splitlines() if line.strip()
-    ]
-    report["open_questions"] = st.session_state["bug_report"]["open_questions"]
+    draft = st.session_state["bug_draft"]
+    report = {field: draft[field] for field in TEXT_FIELDS}
+    report["severity"] = draft["severity"]
+    report["priority"] = draft["priority"]
+    report["steps_to_reproduce"] = _lines(draft["steps"])
+    report["open_questions"] = _lines(draft["open_questions"])
     return report
 
 
@@ -134,12 +152,14 @@ if st.button("🐞 Write bug report", key="write_bug_btn", disabled=not notes.st
     _load_report(result["report"])
     st.session_state["bug_usage"] = result["usage"]
 
-if "bug_report" in st.session_state:
+if "bug_draft" in st.session_state:
+    _restore_widgets()
     st.subheader("✏️ Bug report")
-    questions = st.session_state["bug_report"]["open_questions"]
+    questions = _lines(st.session_state["bug_open_questions"])
     if questions:
         st.warning(
-            "The AI needs more information before this report is complete:\n\n"
+            "The AI needs more information before this report is complete. Add the answers "
+            "to the fields below, then remove the answered questions:\n\n"
             + "\n".join(f"- {q}" for q in questions)
         )
 
@@ -155,7 +175,9 @@ if "bug_report" in st.session_state:
     st.text_area("Actual result", key="bug_actual_result")
     st.text_input("Test data", key="bug_test_data")
     st.text_input("Related test ID", key="bug_related_test_id")
+    st.text_area("Open questions (one per line; remove the ones you answered)", key="bug_open_questions")
 
+    _save_draft()
     report = _current_report()
     missing = missing_required_fields(report)
     if missing:

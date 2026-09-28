@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the Bug Reporter page: turn rough notes about a defect into a structured bug report
+  (severity, priority, steps, expected/actual, open questions), edit it, and export it as
+  Markdown or Excel. The AI asks for missing details instead of inventing them.
+
 ## 0.1.2 - 2026-09-25
 
 - Require `anthropic>=1.0.0`. The client and tests use the 1.x SDK (`httpx2`); the previous

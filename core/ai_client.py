@@ -83,6 +83,24 @@ class ColumnMappingResult(BaseModel):
     mapping: dict[str, str]
 
 
+class BugReport(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str = Field(min_length=1)
+    module: str = Field(min_length=1)
+    severity: Literal["Critical", "Major", "Minor", "Trivial"]
+    priority: Literal["High", "Medium", "Low"]
+    # Empty strings mean "the notes don't say"; the AI must not guess them.
+    environment: str
+    preconditions: str
+    steps_to_reproduce: list[str] = Field(min_length=1)
+    expected_result: str = Field(min_length=1)
+    actual_result: str = Field(min_length=1)
+    test_data: str
+    related_test_id: str
+    open_questions: list[str]
+
+
 class AIClient:
     def __init__(
         self,
@@ -271,3 +289,29 @@ class AIClient:
             ColumnMappingResult,
         )
         return message.parsed_output.model_dump()
+
+    def write_bug_report(
+        self,
+        system_prompt: str,
+        notes: str,
+        related_test_case: dict | str | None = None,
+    ) -> dict:
+        """
+        Turn a tester's rough notes about one defect into a structured bug
+        report. `related_test_case` is optional context: a dict of test case
+        fields (sent as JSON) or text pasted by the user (sent verbatim).
+        Returns {"report": {...BugReport...}, "usage": {...}}.
+        """
+        user_content = f"Tester's notes about the defect:\n\n{notes}"
+        if isinstance(related_test_case, dict):
+            related = json.dumps(related_test_case, ensure_ascii=False, indent=2, default=str)
+        else:
+            related = (related_test_case or "").strip()
+        if related:
+            user_content += f"\n\nRelated test case:\n\n{related}"
+
+        message = self._call_ai(system_prompt, user_content, BugReport)
+        return {
+            "report": message.parsed_output.model_dump(),
+            "usage": self._build_usage(message.usage),
+        }

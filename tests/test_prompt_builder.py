@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from core.prompt_builder import (
+    BUG_REPORT_PROMPT_PATH,
     ProjectConfigError,
     build_system_prompt,
     estimate_prompt_size_warning,
@@ -130,3 +131,13 @@ def test_load_column_mapping_prompt_returns_non_empty_text():
     from core.prompt_builder import load_column_mapping_prompt
 
     assert load_column_mapping_prompt().strip()
+
+
+def test_build_system_prompt_for_bug_reports_includes_rules_and_project():
+    config = load_project_config(CONFIGS_DIR / "example_ecommerce.yaml")
+
+    prompt = build_system_prompt(config, base_prompt_path=BUG_REPORT_PROMPT_PATH)
+
+    assert "Never invent steps" in prompt
+    assert "open_questions" in prompt
+    assert "E-commerce App Demo" in prompt

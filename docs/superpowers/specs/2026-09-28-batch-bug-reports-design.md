@@ -118,7 +118,7 @@ FAILED_STATUS_WORDS = {"fail", "failed", "failure", "ng", "ko dat", "khong dat"}
 - `write_reports(client, system_prompt, rows, source_name="", on_progress=None) -> dict`:
   calls `client.write_bug_report(system_prompt, notes_for_row(row), row["test_case"] or None)`
   for each row, in order. A `ValueError` from one row is recorded as
-  `{"row": <1-based index among failed rows>, "test_id": <test_id or "">, "error": <message>}`
+  `{"row": <row_number in the file, as in source>, "test_id": <test_id or "">, "error": <message>}`
   and the run continues. Each report gets
   `report["source"] = f"{source_name}, row {row_number}"` (just `f"row {row_number}"`
   when `source_name` is empty). `on_progress(done, total)` is called after

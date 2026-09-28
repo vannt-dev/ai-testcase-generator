@@ -140,9 +140,11 @@ The Markdown pastes into GitHub, GitLab, Azure DevOps and Jira Cloud.
 4. Click **Write N bug report(s)** (up to 50 per run), adjust titles, severity
    and priority in the summary, and download one `.xlsx` or `.md` with every report
 
-Each report records its source (file and row) and follows the defect report
-content of ISTQB and ISO/IEC/IEEE 29119-3, including reproducibility and
-build/version; the tracker assigns the ID, date, reporter and status.
+Each report records its source (the file and the row number the spreadsheet
+shows) and covers the core defect report fields of ISTQB and ISO/IEC/IEEE
+29119-3, including reproducibility and build/version. Evidence such as logs,
+screenshots and recordings is attached in the tracker, which also assigns the
+ID, date, reporter and status.
 
 ## Running tests
 

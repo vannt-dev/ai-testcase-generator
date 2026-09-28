@@ -8,7 +8,7 @@
 - Bug Reporter: a **From a test run** tab writes one bug report per failed row of an uploaded
   test run (up to 50 per run), with AI-suggested column mapping, editable summary, a list of
   rows that failed, and one Excel or Markdown download.
-- Bug reports follow ISTQB / ISO/IEC/IEEE 29119-3 defect report content more closely: new
+- Bug reports cover more of the ISTQB / ISO/IEC/IEEE 29119-3 defect report fields: new
   reproducibility and build/version fields, and a source (file and row) for batch reports.
 
 ## 0.1.2 - 2026-09-25

@@ -113,8 +113,9 @@ FAILED_STATUS_WORDS = {"fail", "failed", "failure", "ng", "ko dat", "khong dat"}
   go through `str(...).strip()`; `None` becomes `""`.
 - `notes_for_row(row) -> str`: `"Test case failed during a test run.\n\nActual result: {actual_result}"`,
   plus `"\n\nTester comment: {comment}"` when a comment is present.
-- `failed_rows` also returns `"row_number"`: the 1-based data row number in the
-  uploaded file (the header is not counted), used for `source`.
+- `failed_rows` also returns `"row_number"`: the row as the spreadsheet shows it
+  (header = row 1, skipped blank rows still counted; for CSV, the line the record
+  starts on), from `core.file_import.parse_uploaded_rows`. Used for `source`.
 - `write_reports(client, system_prompt, rows, source_name="", on_progress=None) -> dict`:
   calls `client.write_bug_report(system_prompt, notes_for_row(row), row["test_case"] or None)`
   for each row, in order. A `ValueError` from one row is recorded as
@@ -148,12 +149,14 @@ The page gets two tabs: "From notes" (the existing flow, moved inside the
 tab) and "From a test run". The second tab:
 
 1. Uploader (`key="run_file"`), a project select (`key="run_project_select"`).
-2. When the file name changes, suggest a mapping once, the way the Reviewer
-   does (session keys `run_mapped_file_name`, `run_mapping_suggestion`).
+2. When the file changes (name plus a SHA-256 of its content), suggest a mapping
+   once, clear the per-file widget state (`run_mapping_*`, `run_failed_values_*`)
+   and drop the previous batch result (session keys `run_mapped_file_id`,
+   `run_mapping_suggestion`).
 3. One mapping select per field, `key=f"run_mapping_{field}"`, for
    `RUN_FIELDS` then `TEST_CASE_FIELDS`. Blank header names aren't offered.
    A warning names any missing required field.
-4. When `status` is mapped: a multiselect (`key="run_failed_values"`) of the
+4. When `status` is mapped: a multiselect (`key="run_failed_values_<status column>"`) of the
    distinct status values, defaulting to `default_failed_values`. It is
    followed by a line saying how many rows will be reported.
 5. "Write N bug reports" (`key="write_batch_btn"`) is disabled until the

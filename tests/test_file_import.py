@@ -6,7 +6,7 @@ from xml.etree.ElementTree import ParseError
 import openpyxl
 import pytest
 
-from core.file_import import FileImportError, MAX_IMPORTED_ROWS, parse_uploaded_file
+from core.file_import import FileImportError, MAX_IMPORTED_ROWS, parse_uploaded_file, parse_uploaded_rows
 
 
 class FakeUploadedFile:
@@ -209,3 +209,28 @@ def test_parse_uploaded_csv_rejects_row_wider_than_headers():
 
     with pytest.raises(FileImportError, match="more values than the header row"):
         parse_uploaded_file(uploaded)
+
+
+def test_parse_uploaded_rows_reports_sheet_row_numbers_counting_blank_rows():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["ID", "Status"])
+    ws.append(["TC_1", "Failed"])
+    ws.append([None, None])
+    ws.append(["TC_3", "Failed"])
+    buffer = io.BytesIO()
+    wb.save(buffer)
+
+    rows, numbers = parse_uploaded_rows(FakeUploadedFile("run.xlsx", buffer.getvalue()))
+
+    assert [row["ID"] for row in rows] == ["TC_1", "TC_3"]
+    assert numbers == [2, 4]
+
+
+def test_parse_uploaded_rows_reports_csv_line_numbers():
+    content = 'ID,Status,Note\nTC_1,Failed,x\n\nTC_3,Failed,"two\nlines"\nTC_4,Passed,y\n'.encode()
+
+    rows, numbers = parse_uploaded_rows(FakeUploadedFile("run.csv", content))
+
+    assert [row["ID"] for row in rows] == ["TC_1", "TC_3", "TC_4"]
+    assert numbers == [2, 4, 6]

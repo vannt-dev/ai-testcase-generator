@@ -55,10 +55,17 @@ def default_failed_values(values: list[str]) -> list[str]:
     return selected
 
 
-def failed_rows(rows: list[dict], mapping: dict[str, str], failed_values: list[str]) -> list[dict]:
+def failed_rows(
+    rows: list[dict],
+    mapping: dict[str, str],
+    failed_values: list[str],
+    row_numbers: list[int] | None = None,
+) -> list[dict]:
+    """`row_numbers` are the rows as the spreadsheet shows them (parse_uploaded_rows); default 1..n."""
     wanted = {value.strip() for value in failed_values}
+    numbers = row_numbers or range(1, len(rows) + 1)
     selected = []
-    for number, row in enumerate(rows, start=1):
+    for number, row in zip(numbers, rows):
         if _cell(row, mapping.get("status", "")) not in wanted:
             continue
         test_case = {}

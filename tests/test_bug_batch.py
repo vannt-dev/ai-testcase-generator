@@ -147,3 +147,9 @@ def test_combined_markdown_separates_reports():
 
 def test_max_batch_rows_is_fifty():
     assert MAX_BATCH_ROWS == 50
+
+
+def test_failed_rows_uses_the_given_sheet_row_numbers():
+    rows = failed_rows(ROWS, MAPPING, ["Failed", "FAILED"], row_numbers=[2, 3, 5, 6])
+
+    assert [row["row_number"] for row in rows] == [2, 5]

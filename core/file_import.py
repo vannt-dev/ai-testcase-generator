@@ -23,6 +23,15 @@ def parse_uploaded_file(uploaded_file) -> list[dict]:
     Raises FileImportError on an unsupported extension, an empty or
     unreadable file, or more than MAX_IMPORTED_ROWS data rows.
     """
+    return parse_uploaded_rows(uploaded_file)[0]
+
+
+def parse_uploaded_rows(uploaded_file) -> tuple[list[dict], list[int]]:
+    """
+    Like parse_uploaded_file, plus the row number of each data row as a
+    spreadsheet shows it: the header is row 1 and skipped blank rows still
+    count (for CSV, the line the record starts on).
+    """
     name = getattr(uploaded_file, "name", "")
     suffix = name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
@@ -36,16 +45,16 @@ def parse_uploaded_file(uploaded_file) -> list[dict]:
     if len(raw_bytes) > MAX_UPLOAD_BYTES:
         raise FileImportError("The uploaded file exceeds the 10 MiB size limit.")
     try:
-        rows = _parse_csv(raw_bytes) if suffix == "csv" else _parse_xlsx(raw_bytes)
+        numbered = _parse_csv(raw_bytes) if suffix == "csv" else _parse_xlsx(raw_bytes)
     except FileImportError:
         raise
     except (csv.Error, ValueError, OSError) as error:
         # Parsing is lazy: failures can occur while reading headers or later rows.
         raise FileImportError(f"Could not read the uploaded {suffix.upper()} file: {error}") from error
 
-    if not rows:
+    if not numbered:
         raise FileImportError("The uploaded file has no data rows.")
-    return rows
+    return [row for _, row in numbered], [number for number, _ in numbered]
 
 
 def _too_many_rows_error() -> FileImportError:
@@ -79,7 +88,7 @@ def _validate_cells(values) -> None:
         raise FileImportError(f"An uploaded field exceeds the {MAX_FIELD_CHARS:,} character limit.")
 
 
-def _parse_csv(raw_bytes: bytes) -> list[dict]:
+def _parse_csv(raw_bytes: bytes) -> list[tuple[int, dict]]:
     try:
         text = raw_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as error:
@@ -91,6 +100,8 @@ def _parse_csv(raw_bytes: bytes) -> list[dict]:
     reader.fieldnames = headers
     rows = []
     for row in reader:
+        # line_num is the record's last line; quoted multi-line cells span several lines.
+        start_line = reader.line_num - sum(str(value).count("\n") for value in row.values() if value)
         if None in row:
             raise FileImportError(
                 "A CSV data row has more values than the header row."
@@ -100,11 +111,11 @@ def _parse_csv(raw_bytes: bytes) -> list[dict]:
             # Stop as soon as the cap is exceeded so a hostile file cannot
             # be fully materialized in memory first.
             raise _too_many_rows_error()
-        rows.append(dict(row))
+        rows.append((start_line, dict(row)))
     return rows
 
 
-def _parse_xlsx(raw_bytes: bytes) -> list[dict]:
+def _parse_xlsx(raw_bytes: bytes) -> list[tuple[int, dict]]:
     try:
         workbook = openpyxl.load_workbook(io.BytesIO(raw_bytes), read_only=True, data_only=True)
     except Exception as error:
@@ -123,13 +134,14 @@ def _parse_xlsx(raw_bytes: bytes) -> list[dict]:
             return []
 
         rows = []
-        for values in rows_iter:
+        # The header is sheet row 1; blank rows are skipped but still counted.
+        for sheet_row, values in enumerate(rows_iter, start=2):
             _validate_cells(values)
             if all(v is None for v in values):
                 continue
             if len(rows) >= MAX_IMPORTED_ROWS:
                 raise _too_many_rows_error()
-            rows.append({h: (values[i] if i < len(values) else None) for i, h in enumerate(headers)})
+            rows.append((sheet_row, {h: (values[i] if i < len(values) else None) for i, h in enumerate(headers)}))
         return rows
     except FileImportError:
         raise

@@ -109,3 +109,19 @@ def test_markdown_and_excel_keep_non_ascii_text():
     assert "# Ứng dụng bị treo khi thanh toán" in to_markdown(report)
     sheet = _sheet(to_excel([report]))
     assert sheet.cell(row=2, column=1).value == "Ứng dụng bị treo khi thanh toán"
+
+
+def test_excel_strips_control_characters_from_pasted_logs():
+    sheet = _sheet(to_excel([_report(actual_result="log \x1b[31mERR\x1b[0m\x00")]))
+
+    headers = [cell.value for cell in sheet[1]]
+    actual = sheet.cell(row=2, column=headers.index("Actual Result") + 1).value
+    assert actual == "log [31mERR[0m"
+
+
+def test_markdown_escapes_fences_setext_rules_tables_and_tags():
+    md = to_markdown(
+        _report(actual_result="~~~\ntext\n===\n___\n| a | b |\nshows <null>")
+    )
+
+    assert "\~~~\ntext\n\===\n\___\n\| a | b |\nshows &lt;null>" in md

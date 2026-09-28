@@ -6,6 +6,7 @@ import io
 import re
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -39,13 +40,15 @@ SEVERITY_COLORS = {
     "Trivial": "C6EFCE",
 }
 
-# Characters that start a Markdown block when they open a line.
-_BLOCK_START = re.compile(r"^(\s*)([#>*+\-])", re.MULTILINE)
+# Characters that start a Markdown block when they open a line: headings, quotes, lists,
+# ~~~ fences, === setext headings, ___ rules and | tables.
+_BLOCK_START = re.compile(r"^(\s*)([#>*+\-~=_|])", re.MULTILINE)
 _ORDERED_START = re.compile(r"^(\s*\d+)([.)])", re.MULTILINE)
 
 
 def _escape(text: str) -> str:
-    text = text.replace("\\", "\\\\").replace("`", "\\`")
+    # "<" would otherwise open an HTML tag that GitHub strips, e.g. "shows <null>".
+    text = text.replace("\\", "\\\\").replace("`", "\\`").replace("<", "&lt;")
     text = _BLOCK_START.sub(r"\1\\\2", text)
     return _ORDERED_START.sub(r"\1\\\2", text)
 
@@ -122,7 +125,9 @@ def to_excel(reports: list[dict]) -> bytes:
 
     for row_idx, report in enumerate(reports, start=2):
         for col_idx, (key, _, _) in enumerate(COLUMNS, start=1):
-            cell = ws.cell(row=row_idx, column=col_idx, value=_cell_value(report, key))
+            # openpyxl rejects control characters, e.g. ANSI colour codes in pasted terminal logs.
+            text = ILLEGAL_CHARACTERS_RE.sub("", _cell_value(report, key))
+            cell = ws.cell(row=row_idx, column=col_idx, value=text)
             # Report text is text even when it starts with '='.
             cell.data_type = "s"
             cell.alignment = wrap

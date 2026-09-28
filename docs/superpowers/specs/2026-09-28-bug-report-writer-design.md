@@ -124,8 +124,8 @@ Role: Senior QA Lead writing a bug report from a tester's notes. Rules:
 4. "Write bug report" calls `write_bug_report`; errors show `st.error`,
    as on the other pages.
 5. The result shows as editable fields (`st.text_input`, `st.selectbox`
-   for severity and priority, `st.data_editor` for steps), stored in
-   `st.session_state["bug_report"]`.
+   for severity and priority, a `st.text_area` for the steps with one step
+   per line), stored in `st.session_state["bug_report"]`.
 6. A warning lists `open_questions` when present.
 7. Actions: a Markdown preview with `st.code(..., language="markdown")`,
    whose copy button copies it; "Download .md"; "Download .xlsx"; and the
@@ -145,8 +145,9 @@ disk on the server.
   shown as they are for the other pages.
 - A related test case that isn't valid JSON is sent as plain text; it is
   context, not a contract.
-- Edits that clear a required field (title, expected, actual, all steps)
-  block the exports with a message naming the field.
+- Edits that clear a required field (title, module, expected, actual, all
+  steps) disable the download buttons and show an error naming the field,
+  as the Reviewer does for incomplete rows.
 
 ## Testing
 
@@ -163,7 +164,7 @@ No test calls the real API; all use the fake client pattern in
 - `tests/test_bug_reporter_page.py` (`streamlit.testing.AppTest`, as in
   `test_reviewer_page.py`): disabled button on empty notes, a successful
   run renders the fields and open-questions warning, and an edit that
-  clears a required field blocks the downloads.
+  clears a required field disables the downloads.
 - `tests/test_prompt_builder.py`: the bug report prompt loads and merges
   the project config.
 

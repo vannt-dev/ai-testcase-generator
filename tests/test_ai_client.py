@@ -345,6 +345,8 @@ VALID_BUG = BugReport.model_validate(
         "module": "Checkout",
         "severity": "Major",
         "priority": "High",
+        "reproducibility": "Always",
+        "build_version": "",
         "environment": "",
         "preconditions": "Logged in with a cart that has one item",
         "steps_to_reproduce": ["Open the cart", "Tap Pay", "Enter an expired card and confirm"],

@@ -141,3 +141,5 @@ def test_build_system_prompt_for_bug_reports_includes_rules_and_project():
     assert "Never invent steps" in prompt
     assert "open_questions" in prompt
     assert "E-commerce App Demo" in prompt
+    assert "reproducibility" in prompt
+    assert "build_version" in prompt

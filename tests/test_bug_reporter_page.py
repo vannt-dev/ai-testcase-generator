@@ -16,6 +16,8 @@ def _fake_result(**overrides):
         "module": "Checkout",
         "severity": "Major",
         "priority": "High",
+        "reproducibility": "Always",
+        "build_version": "3.2.0",
         "environment": "",
         "preconditions": "Logged in with one item in the cart",
         "steps_to_reproduce": ["Open the cart", "Tap Pay"],
@@ -176,3 +178,14 @@ def test_answered_open_questions_can_be_cleared(monkeypatch):
 
     assert not any("Which app version?" in w.value for w in at.warning)
     assert not any("## Open Questions" in code.value for code in at.code)
+
+
+def test_notes_form_shows_and_exports_reproducibility_and_build(monkeypatch):
+    at = _new_page(monkeypatch)
+    _write(at)
+
+    assert at.text_input(key="bug_build_version").value == "3.2.0"
+    assert at.selectbox(key="bug_reproducibility").value == "Always"
+    at.selectbox(key="bug_reproducibility").set_value("Intermittent").run(timeout=30)
+    assert any("**Reproducibility:** Intermittent" in code.value for code in at.code)
+    assert any("**Build:** 3.2.0" in code.value for code in at.code)

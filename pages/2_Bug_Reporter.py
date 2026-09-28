@@ -23,8 +23,9 @@ load_dotenv()
 CONFIGS_DIR = Path("configs")
 SEVERITIES = ["Critical", "Major", "Minor", "Trivial"]
 PRIORITIES = ["High", "Medium", "Low"]
+REPRODUCIBILITY = ["Always", "Intermittent", "Once", "Unknown"]
 TEXT_FIELDS = [
-    "title", "module", "environment", "preconditions",
+    "title", "module", "build_version", "environment", "preconditions",
     "expected_result", "actual_result", "test_data", "related_test_id",
 ]
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -75,6 +76,7 @@ def _load_report(report: dict) -> None:
     draft = {field: report[field] for field in TEXT_FIELDS}
     draft["severity"] = report["severity"]
     draft["priority"] = report["priority"]
+    draft["reproducibility"] = report["reproducibility"]
     draft["steps"] = "\n".join(report["steps_to_reproduce"])
     draft["open_questions"] = "\n".join(report["open_questions"])
     st.session_state["bug_draft"] = draft
@@ -99,6 +101,7 @@ def _current_report() -> dict:
     report = {field: draft[field] for field in TEXT_FIELDS}
     report["severity"] = draft["severity"]
     report["priority"] = draft["priority"]
+    report["reproducibility"] = draft["reproducibility"]
     report["steps_to_reproduce"] = _lines(draft["steps"])
     report["open_questions"] = _lines(draft["open_questions"])
     return report
@@ -162,6 +165,9 @@ if "bug_draft" in st.session_state:
     col_module.text_input("Module", key="bug_module")
     col_severity.selectbox("Severity", SEVERITIES, key="bug_severity")
     col_priority.selectbox("Priority", PRIORITIES, key="bug_priority")
+    col_repro, col_build = st.columns(2)
+    col_repro.selectbox("Reproducibility", REPRODUCIBILITY, key="bug_reproducibility")
+    col_build.text_input("Build / version", key="bug_build_version")
     st.text_input("Environment", key="bug_environment")
     st.text_area("Preconditions", key="bug_preconditions")
     st.text_area("Steps to reproduce (one per line)", key="bug_steps")

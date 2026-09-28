@@ -24,6 +24,8 @@ COLUMNS = [
     ("module", "Module", 14),
     ("severity", "Severity", 11),
     ("priority", "Priority", 10),
+    ("reproducibility", "Reproducibility", 14),
+    ("build_version", "Build / Version", 16),
     ("environment", "Environment", 22),
     ("preconditions", "Preconditions", 25),
     ("steps_to_reproduce", "Steps to Reproduce", 45),
@@ -32,6 +34,7 @@ COLUMNS = [
     ("test_data", "Test Data", 20),
     ("related_test_id", "Related Test ID", 16),
     ("open_questions", "Open Questions", 35),
+    ("source", "Source", 28),
 ]
 
 SEVERITY_COLORS = {
@@ -52,6 +55,12 @@ def _escape(text: str) -> str:
     text = text.replace("\\", "\\\\").replace("`", "\\`").replace("<", "&lt;")
     text = _BLOCK_START.sub(r"\1\\\2", text)
     return _ORDERED_START.sub(r"\1\\\2", text)
+
+
+def _escape_inline(text: str) -> str:
+    # Values inside the meta line never start a line, so only inline syntax matters.
+    text = " ".join(text.split())
+    return text.replace("\\", "\\\\").replace("`", "\\`").replace("<", "&lt;")
 
 
 def _steps(report: dict) -> list[str]:
@@ -83,15 +92,21 @@ def to_markdown(report: dict) -> str:
     meta = [
         f"**Severity:** {report.get('severity', '')}",
         f"**Priority:** {report.get('priority', '')}",
-        f"**Module:** {_escape(report.get('module', ''))}",
     ]
+    if report.get("reproducibility", "").strip():
+        meta.append(f"**Reproducibility:** {report['reproducibility'].strip()}")
+    meta.append(f"**Module:** {_escape_inline(report.get('module', ''))}")
+    if report.get("build_version", "").strip():
+        meta.append(f"**Build:** {_escape_inline(report['build_version'])}")
     if report.get("environment", "").strip():
-        meta.append(f"**Environment:** {_escape(report['environment'].strip())}")
+        meta.append(f"**Environment:** {_escape_inline(report['environment'])}")
 
     heading = _escape(title)
     # CommonMark drops a trailing run of "#" in a heading as its closing sequence.
     heading = re.sub(r"(?<!\\)(#+)$", lambda m: "\\#" * len(m.group(1)), heading)
     lines = [f"# {heading}", "", " · ".join(meta)]
+    if report.get("source", "").strip():
+        lines.extend(["", f"**Source:** {_escape_inline(report['source'])}"])
 
     def section(heading: str, body: str) -> None:
         if body.strip():

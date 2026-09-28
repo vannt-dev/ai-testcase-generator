@@ -11,7 +11,9 @@ def _report(**overrides):
         "module": "Checkout",
         "severity": "Major",
         "priority": "High",
-        "environment": "Android 15, app 3.2.0",
+        "reproducibility": "Always",
+        "build_version": "3.2.0",
+        "environment": "Android 15",
         "preconditions": "Logged in with one item in the cart",
         "steps_to_reproduce": ["Open the cart", "Tap Pay", "Enter an expired card"],
         "expected_result": "An 'expired card' error is shown",
@@ -32,8 +34,10 @@ def test_markdown_has_sections_in_order_with_numbered_steps():
     md = to_markdown(_report())
 
     assert md.startswith("# Checkout freezes when paying with an expired card\n")
-    assert "**Severity:** Major · **Priority:** High · **Module:** Checkout" in md
-    assert "**Environment:** Android 15, app 3.2.0" in md
+    assert (
+        "**Severity:** Major · **Priority:** High · **Reproducibility:** Always · "
+        "**Module:** Checkout · **Build:** 3.2.0 · **Environment:** Android 15"
+    ) in md
     order = [
         "## Preconditions",
         "## Steps to Reproduce",
@@ -51,12 +55,17 @@ def test_markdown_has_sections_in_order_with_numbered_steps():
 
 def test_markdown_leaves_out_empty_optional_sections():
     md = to_markdown(
-        _report(environment="", preconditions="", test_data="", related_test_id="", open_questions=[])
+        _report(
+            environment="", build_version="", preconditions="", test_data="",
+            related_test_id="", open_questions=[],
+        )
     )
 
     for heading in ("## Preconditions", "## Test Data", "## Related Test Case", "## Open Questions"):
         assert heading not in md
     assert "**Environment:**" not in md
+    assert "**Build:**" not in md
+    assert "**Source:**" not in md
     assert "## Expected Result" in md
 
 
@@ -124,13 +133,13 @@ def test_markdown_escapes_fences_setext_rules_tables_and_tags():
         _report(actual_result="~~~\ntext\n===\n___\n| a | b |\nshows <null>")
     )
 
-    assert "\~~~\ntext\n\===\n\___\n\| a | b |\nshows &lt;null>" in md
+    assert "\\~~~\ntext\n\\===\n\\___\n\\| a | b |\nshows &lt;null>" in md
 
 
 def test_markdown_keeps_a_trailing_hash_in_the_title():
     md = to_markdown(_report(title="Cart badge shows #"))
 
-    assert md.startswith("# Cart badge shows \#\n")
+    assert md.startswith("# Cart badge shows \\#\n")
 
 
 def test_file_stem_transliterates_vietnamese_titles():
@@ -140,4 +149,24 @@ def test_file_stem_transliterates_vietnamese_titles():
 
 
 def test_markdown_does_not_double_escape_a_hash_only_title():
-    assert to_markdown(_report(title="#")).startswith("# \#\n")
+    assert to_markdown(_report(title="#")).startswith("# \\#\n")
+
+
+def test_markdown_and_excel_show_the_source_when_present():
+    report = _report(source="run.xlsx, row 7")
+
+    assert "**Source:** run.xlsx, row 7" in to_markdown(report)
+    sheet = _sheet(to_excel([report]))
+    headers = [cell.value for cell in sheet[1]]
+    assert headers[-1] == "Source"
+    assert sheet.cell(row=2, column=len(headers)).value == "run.xlsx, row 7"
+    assert headers[headers.index("Priority") + 1] == "Reproducibility"
+    assert headers[headers.index("Environment") - 1] == "Build / Version"
+
+
+def test_markdown_meta_values_are_not_escaped_as_line_starts():
+    md = to_markdown(_report(module="1. Checkout", build_version="3.2.0", environment="- Android"))
+
+    assert "**Module:** 1. Checkout" in md
+    assert "**Build:** 3.2.0" in md
+    assert "**Environment:** - Android" in md

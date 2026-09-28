@@ -90,6 +90,8 @@ class BugReport(BaseModel):
     module: str = Field(min_length=1)
     severity: Literal["Critical", "Major", "Minor", "Trivial"]
     priority: Literal["High", "Medium", "Low"]
+    reproducibility: Literal["Always", "Intermittent", "Once", "Unknown"]
+    build_version: str
     # Empty strings mean "the notes don't say"; the AI must not guess them.
     environment: str
     preconditions: str

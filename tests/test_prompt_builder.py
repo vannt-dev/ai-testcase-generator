@@ -7,6 +7,7 @@ from core.prompt_builder import (
     estimate_prompt_size_warning,
     list_available_configs,
     load_project_config,
+    load_run_column_mapping_prompt,
 )
 import pytest
 
@@ -141,3 +142,12 @@ def test_build_system_prompt_for_bug_reports_includes_rules_and_project():
     assert "Never invent steps" in prompt
     assert "open_questions" in prompt
     assert "E-commerce App Demo" in prompt
+    assert "reproducibility" in prompt
+    assert "build_version" in prompt
+
+
+def test_run_column_mapping_prompt_lists_run_fields():
+    prompt = load_run_column_mapping_prompt()
+
+    for field in ("status", "actual_result", "comment", "test_id", "expected_result"):
+        assert field in prompt

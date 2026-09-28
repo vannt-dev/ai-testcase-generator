@@ -30,9 +30,16 @@ MANDATORY RULES:
 7. "related_test_id": the test_id of the related test case when one is
    given, otherwise an empty string.
 8. Write in the same language as the tester's notes.
+9. "build_version": the app or build version only when the notes or the
+   related test case state it; otherwise an empty string and a question in
+   "open_questions".
+10. "reproducibility": Always, Intermittent or Once only when the notes say
+    how often it happens (e.g. "every time", "sometimes", "happened once");
+    otherwise Unknown and a question in "open_questions".
 
 OUTPUT FORMAT:
 Respond with ONLY a single valid JSON object matching the BugReport
-schema: title, module, severity, priority, environment, preconditions,
+schema: title, module, severity, priority, reproducibility (Always |
+Intermittent | Once | Unknown), build_version, environment, preconditions,
 steps_to_reproduce (array of strings), expected_result, actual_result,
 test_data, related_test_id, open_questions (array of strings).

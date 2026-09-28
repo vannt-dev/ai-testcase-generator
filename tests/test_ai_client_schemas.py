@@ -124,6 +124,8 @@ def _bug_payload(**overrides):
         "module": "Checkout",
         "severity": "Critical",
         "priority": "High",
+        "reproducibility": "Unknown",
+        "build_version": "",
         "environment": "",
         "preconditions": "",
         "steps_to_reproduce": ["Tap Pay"],
@@ -146,6 +148,7 @@ def test_bug_report_accepts_valid_payload():
     [
         {"severity": "Blocker"},
         {"priority": "Urgent"},
+        {"reproducibility": "Sometimes"},
         {"steps_to_reproduce": []},
         {"title": "   "},
         {"actual_result": ""},

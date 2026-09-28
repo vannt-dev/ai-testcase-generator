@@ -12,6 +12,7 @@ BASE_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "base_system_promp
 REVIEWER_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "reviewer_system_prompt.md"
 COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "column_mapping_system_prompt.md"
 BUG_REPORT_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "bug_report_system_prompt.md"
+RUN_COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "run_column_mapping_system_prompt.md"
 
 # Rough token estimate ~ character count / 4 (common rule of thumb for
 # English/Vietnamese text). Threshold used to warn when domain_rules/
@@ -85,6 +86,10 @@ def load_base_prompt(path: Path = BASE_PROMPT_PATH) -> str:
 
 def load_column_mapping_prompt() -> str:
     return COLUMN_MAPPING_PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def load_run_column_mapping_prompt() -> str:
+    return RUN_COLUMN_MAPPING_PROMPT_PATH.read_text(encoding="utf-8")
 
 
 def load_project_config(config_path: str | Path) -> dict:

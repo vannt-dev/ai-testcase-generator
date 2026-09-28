@@ -51,7 +51,8 @@ ai-testcase-generator/
 │   ├── review_utils.py           # Column mapping and collision-safe merging
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   ├── excel_exporter.py         # Exports results to .xlsx
-│   └── bug_exporters.py          # Bug report Markdown/Excel export
+│   ├── bug_exporters.py          # Bug report Markdown/Excel export
+│   └── bug_batch.py              # Bug reports from the failed rows of a test run
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
 │   └── example_ecommerce.yaml    # Sample config
@@ -59,7 +60,8 @@ ai-testcase-generator/
 │   ├── base_system_prompt.md     # Generates complete test cases
 │   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
 │   ├── column_mapping_system_prompt.md
-│   └── bug_report_system_prompt.md # Writes one bug report from notes
+│   ├── bug_report_system_prompt.md # Writes one bug report from notes
+│   └── run_column_mapping_system_prompt.md
 ├── tests/                        # pytest (core logic + all Streamlit pages)
 ├── .github/workflows/tests.yml   # CI: runs pytest on every push/PR
 └── docs/
@@ -119,13 +121,30 @@ The live Reviewer page is available at
 
 ### Write a bug report
 
-1. Open **Bug Reporter** in Streamlit's page navigation
+1. Open **Bug Reporter** in Streamlit's page navigation (tab **From notes**)
 2. Select a project and paste your rough notes about the defect; optionally
    paste the related test case (JSON or plain text)
 3. Click **Write bug report**; answer any open questions the AI lists
 4. Edit the fields, then copy the Markdown or download `.md`/`.xlsx`
 
 The Markdown pastes into GitHub, GitLab, Azure DevOps and Jira Cloud.
+
+### Write bug reports from a test run
+
+1. Open **Bug Reporter** and the **From a test run** tab
+2. Upload the executed test run (`.xlsx`/`.csv`) and confirm the AI-suggested
+   columns: status and actual result are required; a tester comment column and
+   the test case columns are optional context
+3. Check which status values count as failed (`Failed`, `NG`, `Không đạt`… are
+   pre-selected; `Blocked` and `Not run` are not defects)
+4. Click **Write N bug report(s)** (up to 50 per run), adjust titles, severity
+   and priority in the summary, and download one `.xlsx` or `.md` with every report
+
+Each report records its source (the file and the row number the spreadsheet
+shows) and covers the core defect report fields of ISTQB and ISO/IEC/IEEE
+29119-3, including reproducibility and build/version. Evidence such as logs,
+screenshots and recordings is attached in the tracker, which also assigns the
+ID, date, reporter and status.
 
 ## Running tests
 
@@ -179,7 +198,7 @@ cp configs/_template.yaml configs/your_project_name.yaml
 - [x] Phase 1: Generate test cases from a requirement
 - [x] Phase 2: Test Case Reviewer / Coverage Checker
 - [x] Phase 3, step 1: Bug Report Writer with tracker-neutral Markdown/Excel export
-- [ ] Phase 3, step 2: Bug reports from the failed rows of an executed test run
+- [x] Phase 3, step 2: Bug reports from the failed rows of an executed test run
 - [ ] Phase 4: Expand into automation (self-healing scripts, generated test code)
 
 ## Notes

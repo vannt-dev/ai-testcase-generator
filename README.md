@@ -27,13 +27,13 @@ one config file, no code changes needed.
 ## Architecture
 
 ```
-Generator or Reviewer workflow
+Generator, Reviewer or Bug Reporter workflow
             +
 Shared Core Engine + task-specific prompt
             +
 Project Config (YAML)
             =
-Project-aware test cases and coverage reports
+Project-aware test cases, coverage reports and bug reports
 ```
 
 ## Directory structure
@@ -42,22 +42,25 @@ Project-aware test cases and coverage reports
 ai-testcase-generator/
 ├── app.py                       # Generator page and session history
 ├── pages/
-│   └── 1_Reviewer.py            # Coverage review, gap generation, merge/export
+│   ├── 1_Reviewer.py            # Coverage review, gap generation, merge/export
+│   └── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
 ├── core/
 │   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
 │   ├── file_import.py            # Safely parses uploaded .xlsx/.csv files
 │   ├── prompt_builder.py         # Builds Generator/Reviewer prompts + project config
 │   ├── review_utils.py           # Column mapping and collision-safe merging
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
-│   └── excel_exporter.py         # Exports results to .xlsx
+│   ├── excel_exporter.py         # Exports results to .xlsx
+│   └── bug_exporters.py          # Bug report Markdown/Excel export
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
 │   └── example_ecommerce.yaml    # Sample config
 ├── prompts/
 │   ├── base_system_prompt.md     # Generates complete test cases
 │   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
-│   └── column_mapping_system_prompt.md
-├── tests/                        # pytest (core logic + both Streamlit pages)
+│   ├── column_mapping_system_prompt.md
+│   └── bug_report_system_prompt.md # Writes one bug report from notes
+├── tests/                        # pytest (core logic + all Streamlit pages)
 ├── .github/workflows/tests.yml   # CI: runs pytest on every push/PR
 └── docs/
     └── how-to-add-new-project.md
@@ -114,6 +117,16 @@ Open your browser at `http://localhost:8501`.
 The live Reviewer page is available at
 **[ai-testcase-gen.streamlit.app/Reviewer](https://ai-testcase-gen.streamlit.app/Reviewer)**.
 
+### Write a bug report
+
+1. Open **Bug Reporter** in Streamlit's page navigation
+2. Select a project and paste your rough notes about the defect; optionally
+   paste the related test case (JSON or plain text)
+3. Click **Write bug report**; answer any open questions the AI lists
+4. Edit the fields, then copy the Markdown or download `.md`/`.xlsx`
+
+The Markdown pastes into GitHub, GitLab, Azure DevOps and Jira Cloud.
+
 ## Running tests
 
 ```bash
@@ -165,7 +178,8 @@ cp configs/_template.yaml configs/your_project_name.yaml
 
 - [x] Phase 1: Generate test cases from a requirement
 - [x] Phase 2: Test Case Reviewer / Coverage Checker
-- [ ] Phase 3: AI-assisted Bug Report Writer + Jira integration
+- [x] Phase 3, step 1: Bug Report Writer with tracker-neutral Markdown/Excel export
+- [ ] Phase 3, step 2: Bug reports from the failed rows of an executed test run
 - [ ] Phase 4: Expand into automation (self-healing scripts, generated test code)
 
 ## Notes

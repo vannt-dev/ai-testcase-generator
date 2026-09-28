@@ -1,22 +1,38 @@
 """
-Bug Reporter — turns a tester's rough notes about one defect into a
-structured bug report, editable here and exported as Markdown or Excel.
+Bug Reporter — turns a tester's rough notes about one defect, or the failed
+rows of an executed test run, into structured bug reports, exported as
+Markdown or Excel.
 """
 import json
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
+from core.bug_batch import (
+    MAX_BATCH_ROWS,
+    REQUIRED_RUN_FIELDS,
+    RUN_FIELDS,
+    apply_summary_edits,
+    combined_markdown,
+    default_failed_values,
+    distinct_values,
+    failed_rows,
+    write_reports,
+)
 from core.bug_exporters import file_stem, missing_required_fields, to_excel, to_markdown
+from core.file_import import FileImportError, parse_uploaded_file
 from core.prompt_builder import (
     BUG_REPORT_PROMPT_PATH,
     ProjectConfigError,
     build_system_prompt,
     list_available_configs,
     load_project_config,
+    load_run_column_mapping_prompt,
 )
+from core.result_utils import TEST_CASE_FIELDS
 
 load_dotenv()
 
@@ -32,7 +48,7 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 st.set_page_config(page_title="Bug Reporter — AI Test Case Generator", page_icon="🐞", layout="wide")
 st.title("🐞 Bug Reporter")
-st.caption("Turn rough notes about a defect into a complete bug report you can paste into any tracker.")
+st.caption("Turn rough notes, or the failed rows of a test run, into bug reports you can paste into any tracker.")
 
 # Streamlit renders each page's sidebar separately; without this block the
 # page is a dead end when opened first with no ANTHROPIC_API_KEY set.
@@ -107,49 +123,58 @@ def _current_report() -> dict:
     return report
 
 
-configs = list_available_configs(CONFIGS_DIR)
-if not configs:
-    st.error("No project configs found in configs/. Add one from configs/_template.yaml.")
-    st.stop()
+def _usage_caption(usage: dict) -> None:
+    if not usage:
+        return
+    cost = usage.get("estimated_cost_usd")
+    st.caption(
+        f"Model: {usage.get('model', 'N/A')} · input {usage.get('input_tokens', 0):,} tokens"
+        f" · output {usage.get('output_tokens', 0):,} tokens · estimated cost "
+        + (f"${cost:.6f}" if cost is not None else "N/A")
+    )
 
-project = st.selectbox("Project", configs, key="bug_project_select")
-notes = st.text_area(
-    "What went wrong? Rough notes are fine.",
-    key="bug_notes",
-    height=160,
-    placeholder="Tapping Pay with an expired card freezes the app, no error shown",
-)
-related = st.text_area(
-    "Related test case (optional)",
-    key="bug_related_case",
-    height=100,
-    help="Paste the test case as JSON or as plain text; it is context for the AI.",
-)
 
-if not notes.strip():
-    st.info("Enter your notes above to write a bug report.")
+def _render_notes_tab(configs: list[str]) -> None:
+    project = st.selectbox("Project", configs, key="bug_project_select")
+    notes = st.text_area(
+        "What went wrong? Rough notes are fine.",
+        key="bug_notes",
+        height=160,
+        placeholder="Tapping Pay with an expired card freezes the app, no error shown",
+    )
+    related = st.text_area(
+        "Related test case (optional)",
+        key="bug_related_case",
+        height=100,
+        help="Paste the test case as JSON or as plain text; it is context for the AI.",
+    )
 
-if st.button("🐞 Write bug report", key="write_bug_btn", disabled=not notes.strip()):
-    try:
-        config = load_project_config(CONFIGS_DIR / f"{project}.yaml")
-        client = AIClient(api_key=st.session_state.get("api_key") or None)
-    except (ProjectConfigError, ValueError) as e:
-        st.error(str(e))
-        st.stop()
+    if not notes.strip():
+        st.info("Enter your notes above to write a bug report.")
 
-    system_prompt = build_system_prompt(config, base_prompt_path=BUG_REPORT_PROMPT_PATH)
-    with st.status("Writing the bug report...", expanded=False) as status:
+    if st.button("🐞 Write bug report", key="write_bug_btn", disabled=not notes.strip()):
         try:
-            result = client.write_bug_report(system_prompt, notes, _related_context(related))
-        except ValueError as e:
-            status.update(label=f"Error: {e}", state="error")
-            st.error(f"Error calling the AI: {e}")
-            st.stop()
-        status.update(label="Done", state="complete")
-    _load_report(result["report"])
-    st.session_state["bug_usage"] = result["usage"]
+            config = load_project_config(CONFIGS_DIR / f"{project}.yaml")
+            client = AIClient(api_key=st.session_state.get("api_key") or None)
+        except (ProjectConfigError, ValueError) as e:
+            st.error(str(e))
+            return
 
-if "bug_draft" in st.session_state:
+        system_prompt = build_system_prompt(config, base_prompt_path=BUG_REPORT_PROMPT_PATH)
+        with st.status("Writing the bug report...", expanded=False) as status:
+            try:
+                result = client.write_bug_report(system_prompt, notes, _related_context(related))
+            except ValueError as e:
+                status.update(label=f"Error: {e}", state="error")
+                st.error(f"Error calling the AI: {e}")
+                return
+            status.update(label="Done", state="complete")
+        _load_report(result["report"])
+        st.session_state["bug_usage"] = result["usage"]
+
+    if "bug_draft" not in st.session_state:
+        return
+
     _restore_widgets()
     st.subheader("✏️ Bug report")
     questions = _lines(st.session_state["bug_open_questions"])
@@ -201,11 +226,149 @@ if "bug_draft" in st.session_state:
             key="download_bug_xlsx", disabled=bool(missing),
         )
 
-    usage = st.session_state.get("bug_usage", {})
-    if usage:
-        cost = usage.get("estimated_cost_usd")
-        st.caption(
-            f"Model: {usage.get('model', 'N/A')} · input {usage.get('input_tokens', 0):,} tokens"
-            f" · output {usage.get('output_tokens', 0):,} tokens · estimated cost "
-            + (f"${cost:.6f}" if cost is not None else "N/A")
+    _usage_caption(st.session_state.get("bug_usage", {}))
+
+
+def _render_batch_result() -> None:
+    result = st.session_state["batch_result"]
+    for error in result["errors"]:
+        label = f"Row {error['row']}" + (f" ({error['test_id']})" if error["test_id"] else "")
+        st.error(f"{label}: {error['error']}")
+    if not result["reports"]:
+        st.error("No bug reports were written. Check the errors above and try again.")
+        return
+
+    st.subheader(f"✏️ {len(result['reports'])} bug report(s)")
+    summary = pd.DataFrame(
+        [
+            {
+                "#": number,
+                "related_test_id": report["related_test_id"],
+                "title": report["title"],
+                "severity": report["severity"],
+                "priority": report["priority"],
+            }
+            for number, report in enumerate(result["reports"], start=1)
+        ]
+    )
+    edited = st.data_editor(
+        summary,
+        key="batch_editor",
+        hide_index=True,
+        use_container_width=True,
+        disabled=["#", "related_test_id"],
+        column_config={
+            "severity": st.column_config.SelectboxColumn("Severity", options=SEVERITIES, required=True),
+            "priority": st.column_config.SelectboxColumn("Priority", options=PRIORITIES, required=True),
+        },
+    )
+    reports = apply_summary_edits(result["reports"], edited.to_dict("records"))
+
+    stem = f"bug_reports_{st.session_state.get('batch_project', 'project')}"
+    col_xlsx, col_md = st.columns(2)
+    with col_xlsx:
+        st.download_button(
+            "⬇️ Download .xlsx", to_excel(reports), f"{stem}.xlsx", XLSX_MIME, key="download_batch_xlsx"
         )
+    with col_md:
+        st.download_button(
+            "⬇️ Download .md", combined_markdown(reports).encode("utf-8"), f"{stem}.md", "text/markdown",
+            key="download_batch_md",
+        )
+    _usage_caption(result["usage"])
+
+
+def _render_run_tab(configs: list[str]) -> None:
+    uploaded = st.file_uploader("Executed test run (.xlsx or .csv)", type=["xlsx", "csv"], key="run_file")
+    project = st.selectbox("Project", configs, key="run_project_select")
+    if uploaded is None:
+        st.info("Upload a test run with a status column and an actual result column.")
+        return
+    try:
+        raw_rows = parse_uploaded_file(uploaded)
+    except FileImportError as e:
+        st.error(str(e))
+        return
+
+    headers = list(raw_rows[0].keys())
+    if st.session_state.get("run_mapped_file_name") != uploaded.name:
+        # A new file: suggest a mapping once and drop results that belong to the old file.
+        try:
+            client = AIClient(api_key=st.session_state.get("api_key") or None)
+            suggestion = client.suggest_column_mapping(
+                load_run_column_mapping_prompt(), headers, raw_rows[:5]
+            )["mapping"]
+        except ValueError as e:
+            st.warning(f"Could not get a column mapping suggestion: {e}")
+            suggestion = {}
+        st.session_state["run_mapping_suggestion"] = suggestion
+        st.session_state["run_mapped_file_name"] = uploaded.name
+        st.session_state.pop("batch_result", None)
+
+    st.markdown("**Confirm column mapping** — test case columns are optional context for the AI:")
+    # Blank header names would look like "unmapped" and could silently feed a column's data.
+    options = [""] + [h for h in headers if h.strip()]
+    suggestion = st.session_state.get("run_mapping_suggestion", {})
+    mapping = {}
+    for field in (*RUN_FIELDS, *TEST_CASE_FIELDS):
+        suggested = suggestion.get(field, "")
+        index = options.index(suggested) if suggested in options else 0
+        mapping[field] = st.selectbox(field, options, index=index, key=f"run_mapping_{field}")
+
+    rows = []
+    missing = [field for field in REQUIRED_RUN_FIELDS if not mapping[field]]
+    if missing:
+        st.warning("Map the required column(s): " + ", ".join(missing))
+    else:
+        values = distinct_values(raw_rows, mapping["status"])
+        # Keyed by column: values chosen for one column are never offered against another.
+        chosen = st.multiselect(
+            "Status values that mean the test failed",
+            values,
+            default=default_failed_values(values),
+            key=f"run_failed_values_{mapping['status']}",
+        )
+        rows = failed_rows(raw_rows, mapping, chosen)
+        if not rows:
+            st.info("No rows have the selected status values.")
+        elif len(rows) > MAX_BATCH_ROWS:
+            st.error(
+                f"{len(rows)} failed rows found; the limit is {MAX_BATCH_ROWS} per run. "
+                "Split the file and run each part."
+            )
+        else:
+            st.markdown(f"**{len(rows)}** failed row(s) will get a bug report.")
+
+    ready = 0 < len(rows) <= MAX_BATCH_ROWS
+    if st.button(f"🐞 Write {len(rows)} bug report(s)", key="write_batch_btn", disabled=not ready):
+        try:
+            config = load_project_config(CONFIGS_DIR / f"{project}.yaml")
+            client = AIClient(api_key=st.session_state.get("api_key") or None)
+        except (ProjectConfigError, ValueError) as e:
+            st.error(str(e))
+            return
+        system_prompt = build_system_prompt(config, base_prompt_path=BUG_REPORT_PROMPT_PATH)
+        progress = st.progress(0.0, text="Writing bug reports...")
+        st.session_state["batch_result"] = write_reports(
+            client,
+            system_prompt,
+            rows,
+            source_name=uploaded.name,
+            on_progress=lambda done, total: progress.progress(done / total, text=f"Written {done} of {total}"),
+        )
+        st.session_state["batch_project"] = project
+
+    if "batch_result" in st.session_state:
+        _render_batch_result()
+
+
+configs = list_available_configs(CONFIGS_DIR)
+if not configs:
+    st.error("No project configs found in configs/. Add one from configs/_template.yaml.")
+    st.stop()
+
+notes_tab, run_tab = st.tabs(["From notes", "From a test run"])
+with notes_tab:
+    _render_notes_tab(configs)
+with run_tab:
+    _render_run_tab(configs)

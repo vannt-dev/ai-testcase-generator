@@ -1,7 +1,9 @@
 """Integration tests for pages/2_Bug_Reporter.py using Streamlit AppTest."""
+import io
 from pathlib import Path
 from unittest.mock import patch
 
+import openpyxl
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
@@ -189,3 +191,131 @@ def test_notes_form_shows_and_exports_reproducibility_and_build(monkeypatch):
     at.selectbox(key="bug_reproducibility").set_value("Intermittent").run(timeout=30)
     assert any("**Reproducibility:** Intermittent" in code.value for code in at.code)
     assert any("**Build:** 3.2.0" in code.value for code in at.code)
+
+
+RUN_MAPPING = {
+    "mapping": {
+        "status": "Status", "actual_result": "Actual", "comment": "Note",
+        "test_id": "ID", "title": "Title", "steps": "Steps",
+        "module": "", "precondition": "", "test_data": "", "expected_result": "",
+        "priority": "", "type": "", "platform": "",
+    }
+}
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _run_xlsx(rows):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["ID", "Title", "Steps", "Status", "Actual", "Note"])
+    for row in rows:
+        ws.append(row)
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
+RUN_ROWS = [
+    ["TC_1", "Pay", "1. Pay", "Failed", "Freezes", "on Android"],
+    ["TC_2", "Login", "1. Login", "Passed", "OK", ""],
+    ["TC_3", "Cart", "1. Open cart", "Không đạt", "Empty", ""],
+    ["TC_4", "Search", "1. Search", "Blocked", "", ""],
+]
+
+
+def _upload_run(at, rows=RUN_ROWS, name="run.xlsx", mapping=RUN_MAPPING):
+    with patch.object(AIClient, "suggest_column_mapping", return_value=mapping):
+        at.file_uploader(key="run_file").upload(name, _run_xlsx(rows), XLSX).run(timeout=30)
+
+
+def test_run_upload_preselects_failed_values_and_counts_rows(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+
+    assert not at.exception
+    assert at.multiselect(key="run_failed_values_Status").value == ["Failed", "Không đạt"]
+    assert any("**2** failed row(s)" in m.value for m in at.markdown)
+    assert at.button(key="write_batch_btn").disabled is False
+
+
+def test_run_button_disabled_until_status_is_mapped(monkeypatch):
+    at = _new_page(monkeypatch)
+    mapping = {"mapping": dict(RUN_MAPPING["mapping"], status="")}
+    _upload_run(at, mapping=mapping)
+
+    assert any("status" in w.value for w in at.warning)
+    assert at.button(key="write_batch_btn").disabled is True
+
+
+def test_run_changing_status_column_resets_failed_values(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+
+    at.selectbox(key="run_mapping_status").select("Note").run(timeout=30)
+
+    assert not at.exception
+    assert at.multiselect(key="run_failed_values_Note").value == []
+
+
+def test_run_writes_reports_and_lists_errors(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+    responses = [_fake_result(title="Pay freezes"), ValueError("boom")]
+
+    calls = []
+    real_download_button = st.download_button
+
+    def _spy(*args, **kwargs):
+        calls.append(kwargs.get("key"))
+        return real_download_button(*args, **kwargs)
+
+    with patch.object(AIClient, "write_bug_report", side_effect=responses), \
+         patch.object(st, "download_button", _spy):
+        at.button(key="write_batch_btn").click().run(timeout=30)
+
+    assert not at.exception
+    result = at.session_state["batch_result"]
+    assert [r["source"] for r in result["reports"]] == ["run.xlsx, row 1"]
+    assert result["errors"] == [{"row": 3, "test_id": "TC_3", "error": "boom"}]
+    assert any("Row 3 (TC_3): boom" in e.value for e in at.error)
+    assert "download_batch_xlsx" in calls and "download_batch_md" in calls
+
+
+def test_run_all_rows_failing_shows_error_without_downloads(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+
+    calls = []
+    real_download_button = st.download_button
+
+    def _spy(*args, **kwargs):
+        calls.append(kwargs.get("key"))
+        return real_download_button(*args, **kwargs)
+
+    with patch.object(AIClient, "write_bug_report", side_effect=ValueError("down")), \
+         patch.object(st, "download_button", _spy):
+        at.button(key="write_batch_btn").click().run(timeout=30)
+
+    assert any("No bug reports were written" in e.value for e in at.error)
+    assert "download_batch_xlsx" not in calls
+
+
+def test_run_over_the_limit_disables_the_button(monkeypatch):
+    at = _new_page(monkeypatch)
+    rows = [[f"TC_{i}", "T", "S", "Failed", "A", ""] for i in range(51)]
+    _upload_run(at, rows=rows)
+
+    assert at.button(key="write_batch_btn").disabled is True
+    assert any("limit is 50" in e.value for e in at.error)
+
+
+def test_run_new_upload_clears_previous_results(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+    with patch.object(AIClient, "write_bug_report", return_value=_fake_result()):
+        at.button(key="write_batch_btn").click().run(timeout=30)
+    assert "batch_result" in at.session_state
+
+    _upload_run(at, name="run2.xlsx")
+
+    assert "batch_result" not in at.session_state

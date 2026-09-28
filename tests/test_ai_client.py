@@ -5,7 +5,7 @@ import anthropic
 import httpx2
 import pytest
 
-from core.ai_client import AIClient, GenerationResult, ReviewResult, ColumnMappingResult
+from core.ai_client import AIClient, BugReport, GenerationResult, ReviewResult, ColumnMappingResult
 
 
 VALID_RESULT = GenerationResult.model_validate(
@@ -337,3 +337,72 @@ def test_retries_server_errors_then_succeeds():
 
     assert client.generate_test_cases("system", "requirement")["summary"]["total"] == 1
     assert messages.calls == 2
+
+
+VALID_BUG = BugReport.model_validate(
+    {
+        "title": "App freezes when paying with an expired card",
+        "module": "Checkout",
+        "severity": "Major",
+        "priority": "High",
+        "environment": "",
+        "preconditions": "Logged in with a cart that has one item",
+        "steps_to_reproduce": ["Open the cart", "Tap Pay", "Enter an expired card and confirm"],
+        "expected_result": "An 'expired card' error is shown",
+        "actual_result": "The app freezes and shows no error",
+        "test_data": "Card 4111 1111 1111 1111, expiry 01/20",
+        "related_test_id": "",
+        "open_questions": ["Which app version and device?"],
+    }
+)
+
+
+def _bug_response():
+    return SimpleNamespace(
+        parsed_output=VALID_BUG,
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=20),
+    )
+
+
+def test_write_bug_report_returns_report_and_usage():
+    client, messages = make_client(_bug_response())
+
+    result = client.write_bug_report("system prompt", "pay with expired card -> freeze")
+
+    assert result["report"]["title"] == "App freezes when paying with an expired card"
+    assert result["report"]["steps_to_reproduce"][1] == "Tap Pay"
+    assert result["usage"]["output_tokens"] == 20
+    assert messages.kwargs["output_format"] is BugReport
+    content = messages.kwargs["messages"][0]["content"]
+    assert "pay with expired card -> freeze" in content
+    assert "Related test case" not in content
+
+
+def test_write_bug_report_sends_related_test_case_as_json():
+    client, messages = make_client(_bug_response())
+
+    client.write_bug_report(
+        "system prompt", "notes", {"test_id": "TC_PAY_003", "title": "Pay with expired card"}
+    )
+
+    content = messages.kwargs["messages"][0]["content"]
+    assert "Related test case" in content
+    assert '"test_id": "TC_PAY_003"' in content
+
+
+def test_write_bug_report_sends_plain_text_related_case_verbatim():
+    client, messages = make_client(_bug_response())
+
+    client.write_bug_report("system prompt", "notes", "TC_PAY_003 | Pay with expired card | High")
+
+    assert "TC_PAY_003 | Pay with expired card | High" in messages.kwargs["messages"][0]["content"]
+
+
+def test_write_bug_report_serializes_non_json_native_values():
+    client, messages = make_client(_bug_response())
+    created = datetime(2026, 9, 28, 9, 0, 0)
+
+    client.write_bug_report("system prompt", "notes", {"test_id": "TC_1", "created": created})
+
+    assert str(created) in messages.kwargs["messages"][0]["content"]

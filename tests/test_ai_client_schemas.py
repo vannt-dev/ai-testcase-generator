@@ -2,7 +2,7 @@
 import pydantic
 import pytest
 
-from core.ai_client import ColumnMappingResult, CoverageGap, DuplicateGroup, ReviewResult
+from core.ai_client import BugReport, ColumnMappingResult, CoverageGap, DuplicateGroup, ReviewResult
 
 VALID_GAP = {
     "description": "No test for OTP resend after expiry",
@@ -116,3 +116,41 @@ def test_column_mapping_result_rejects_missing_mapping():
 def test_column_mapping_result_rejects_non_string_mapping_value():
     with pytest.raises(pydantic.ValidationError):
         ColumnMappingResult.model_validate({"mapping": {"test_id": ["ID"]}})
+
+
+def _bug_payload(**overrides):
+    payload = {
+        "title": "Crash on pay",
+        "module": "Checkout",
+        "severity": "Critical",
+        "priority": "High",
+        "environment": "",
+        "preconditions": "",
+        "steps_to_reproduce": ["Tap Pay"],
+        "expected_result": "Payment succeeds",
+        "actual_result": "App crashes",
+        "test_data": "",
+        "related_test_id": "",
+        "open_questions": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_bug_report_accepts_valid_payload():
+    assert BugReport.model_validate(_bug_payload()).severity == "Critical"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"severity": "Blocker"},
+        {"priority": "Urgent"},
+        {"steps_to_reproduce": []},
+        {"title": "   "},
+        {"actual_result": ""},
+    ],
+)
+def test_bug_report_rejects_invalid_values(overrides):
+    with pytest.raises(pydantic.ValidationError):
+        BugReport.model_validate(_bug_payload(**overrides))

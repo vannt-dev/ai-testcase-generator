@@ -11,6 +11,22 @@ an actual result per test case. Writing one bug report per failed row by
 hand is repetitive. This step turns the failed rows of that file into bug
 reports in one run, using the one-bug core from step 1.
 
+## Standards alignment
+
+Checked against the defect report content in the ISTQB Foundation syllabus and the
+incident report in ISO/IEC/IEEE 29119-3. Already aligned: separate severity and priority,
+a Critical/Major/Minor/Trivial scale, title, steps, expected and actual results, test data,
+environment and the related test case; only `Failed` rows become reports (`Blocked` and
+`Not run` are not defects). This step closes the gaps that matter outside a tracker:
+
+- **Reproducibility** (`Always`, `Intermittent`, `Once`, `Unknown`) is added to `BugReport`.
+- **Build / version** is split out of `environment` into `build_version`.
+- **Source**: every batch report records which test run and row it came from.
+- `x` is not a default failed value: many teams mark executed or passed rows with it.
+
+Identifier, report date, reporter and defect status are left to the tracker, which
+assigns them when the issue is created.
+
 ## Scope
 
 **In scope:**
@@ -29,6 +45,9 @@ reports in one run, using the one-bug core from step 1.
   of rows that failed; the total usage and cost.
 - Downloads: one Excel file with every report (`to_excel`) and one Markdown
   file with the reports separated by `---`.
+- Standards alignment changes to the step 1 core (see below): `reproducibility`
+  and `build_version` in `BugReport`, the prompt, both exporters and the
+  "From notes" form; an optional `source` shown by both exporters.
 
 **Out of scope:**
 - Editing every field of each report in the batch view. To polish one
@@ -51,13 +70,35 @@ reused unchanged.
 
 ## Components
 
+### Step 1 core changes (standards alignment)
+
+- `core/ai_client.py` `BugReport` gains
+  `build_version: str` (`""` when the notes don't say) and
+  `reproducibility: Literal["Always", "Intermittent", "Once", "Unknown"]`.
+- `prompts/bug_report_system_prompt.md` gains two rules. `build_version` is
+  the app or build version only when the notes or test case state it;
+  otherwise it is empty and a question is asked. `reproducibility` is
+  `Unknown` unless the notes say how often it happens (for example
+  "every time" or "sometimes"); when it is `Unknown`, ask. The output list
+  names both fields.
+- `core/bug_exporters.py`:
+  - The Markdown meta line adds `**Reproducibility:**` after priority, and
+    `**Build:**` before environment when it is non-empty.
+  - A `**Source:**` line follows when `report.get("source")` is non-empty.
+  - Excel adds the columns "Reproducibility" after Priority, "Build / Version"
+    before Environment, and "Source" last.
+  - `source` is not part of `BugReport`; it is set by the batch after generation.
+- `pages/2_Bug_Reporter.py` "From notes" adds a "Build / version" text input
+  (`bug_build_version`) and a "Reproducibility" select (`bug_reproducibility`)
+  to the draft and the form.
+
 ### `core/bug_batch.py`
 
 ```python
 RUN_FIELDS = ("status", "actual_result", "comment")
 REQUIRED_RUN_FIELDS = ("status", "actual_result")
 MAX_BATCH_ROWS = 50
-FAILED_STATUS_WORDS = {"fail", "failed", "failure", "ng", "ko dat", "khong dat", "x"}
+FAILED_STATUS_WORDS = {"fail", "failed", "failure", "ng", "ko dat", "khong dat"}
 ```
 
 - `default_failed_values(values: list[str]) -> list[str]`: the distinct
@@ -72,11 +113,15 @@ FAILED_STATUS_WORDS = {"fail", "failed", "failure", "ng", "ko dat", "khong dat",
   go through `str(...).strip()`; `None` becomes `""`.
 - `notes_for_row(row) -> str`: `"Test case failed during a test run.\n\nActual result: {actual_result}"`,
   plus `"\n\nTester comment: {comment}"` when a comment is present.
-- `write_reports(client, system_prompt, rows, on_progress=None) -> dict`:
+- `failed_rows` also returns `"row_number"`: the 1-based data row number in the
+  uploaded file (the header is not counted), used for `source`.
+- `write_reports(client, system_prompt, rows, source_name="", on_progress=None) -> dict`:
   calls `client.write_bug_report(system_prompt, notes_for_row(row), row["test_case"] or None)`
   for each row, in order. A `ValueError` from one row is recorded as
   `{"row": <1-based index among failed rows>, "test_id": <test_id or "">, "error": <message>}`
-  and the run continues. `on_progress(done, total)` is called after
+  and the run continues. Each report gets
+  `report["source"] = f"{source_name}, row {row_number}"` (just `f"row {row_number}"`
+  when `source_name` is empty). `on_progress(done, total)` is called after
   each row. Returns `{"reports": [...], "errors": [...], "usage": {...}}`.
   The usage sums `input_tokens`, `output_tokens`, `cache_creation_input_tokens`
   and `cache_read_input_tokens`, and `estimated_cost_usd` (which is `None` if
@@ -148,7 +193,8 @@ No test calls the real API.
 
 - `tests/test_bug_batch.py`:
   - `default_failed_values`: Vietnamese forms with and without
-    diacritics, mixed case, blanks ignored, first-seen order.
+    diacritics, mixed case, blanks ignored, first-seen order, `x`/`Passed`/
+    `Blocked` not selected.
   - `failed_rows`: filtering by the chosen values, unmapped optional
     fields, `None` cells, file order.
   - `notes_for_row`: with and without a comment.
@@ -156,6 +202,11 @@ No test calls the real API.
     the others still run. Checks the order of progress callbacks, the
     usage sums, and that the cost is `None` when any row has no estimate.
   - `combined_markdown`: the separator.
+  - `write_reports` sets `source` from the file name and row number.
+- Step 1 tests updated: `BugReport` accepts the new fields and rejects an
+  unknown reproducibility; the exporters show reproducibility, build and
+  source, and leave out empty build and source; the "From notes" form loads
+  and exports both new fields.
 - `tests/test_prompt_builder.py`: the run mapping prompt lists `status`,
   `actual_result` and `comment`.
 - `tests/test_bug_reporter_page.py` (AppTest):

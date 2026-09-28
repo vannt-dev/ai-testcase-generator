@@ -3,14 +3,13 @@ Bug Reporter — turns a tester's rough notes about one defect into a
 structured bug report, editable here and exported as Markdown or Excel.
 """
 import json
-import re
 from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
-from core.bug_exporters import missing_required_fields, to_excel, to_markdown
+from core.bug_exporters import file_stem, missing_required_fields, to_excel, to_markdown
 from core.prompt_builder import (
     BUG_REPORT_PROMPT_PATH,
     ProjectConfigError,
@@ -105,11 +104,6 @@ def _current_report() -> dict:
     return report
 
 
-def _file_stem(title: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9]+", "_", title).strip("_")[:50]
-    return f"bug_{slug}" if slug else "bug_report"
-
-
 configs = list_available_configs(CONFIGS_DIR)
 if not configs:
     st.error("No project configs found in configs/. Add one from configs/_template.yaml.")
@@ -187,7 +181,7 @@ if "bug_draft" in st.session_state:
     st.markdown("**Markdown preview** — use the copy button in the corner of the block.")
     st.code(markdown, language="markdown")
 
-    stem = _file_stem(report["title"])
+    stem = file_stem(report["title"])
     col_md, col_xlsx = st.columns(2)
     # Call st.download_button (not col.download_button) so tests can spy on it, as the Reviewer's do.
     with col_md:

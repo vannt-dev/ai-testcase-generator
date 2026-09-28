@@ -4,6 +4,7 @@ GitHub, GitLab, Azure DevOps or Jira Cloud, and Excel for sharing a set.
 """
 import io
 import re
+import unicodedata
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
@@ -57,6 +58,15 @@ def _steps(report: dict) -> list[str]:
     return [step.strip() for step in report.get("steps_to_reproduce", []) if step.strip()]
 
 
+def file_stem(title: str) -> str:
+    """ASCII download name from a title; Vietnamese diacritics are dropped, not mangled."""
+    # NFKD splits most accented letters into base + combining mark; đ/Đ have no decomposition.
+    ascii_title = unicodedata.normalize("NFKD", title.replace("đ", "d").replace("Đ", "D"))
+    ascii_title = "".join(ch for ch in ascii_title if not unicodedata.combining(ch))
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", ascii_title).strip("_")[:50]
+    return f"bug_{slug}" if slug else "bug_report"
+
+
 def missing_required_fields(report: dict) -> list[str]:
     missing = []
     for key, label in REQUIRED_FIELD_LABELS.items():
@@ -78,7 +88,10 @@ def to_markdown(report: dict) -> str:
     if report.get("environment", "").strip():
         meta.append(f"**Environment:** {_escape(report['environment'].strip())}")
 
-    lines = [f"# {_escape(title)}", "", " · ".join(meta)]
+    heading = _escape(title)
+    # CommonMark drops a trailing run of "#" in a heading as its closing sequence.
+    heading = re.sub(r"(?<!\\)(#+)$", lambda m: "\\#" * len(m.group(1)), heading)
+    lines = [f"# {heading}", "", " · ".join(meta)]
 
     def section(heading: str, body: str) -> None:
         if body.strip():

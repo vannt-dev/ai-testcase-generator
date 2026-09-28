@@ -2,7 +2,7 @@ import io
 
 import openpyxl
 
-from core.bug_exporters import missing_required_fields, to_excel, to_markdown
+from core.bug_exporters import file_stem, missing_required_fields, to_excel, to_markdown
 
 
 def _report(**overrides):
@@ -125,3 +125,19 @@ def test_markdown_escapes_fences_setext_rules_tables_and_tags():
     )
 
     assert "\~~~\ntext\n\===\n\___\n\| a | b |\nshows &lt;null>" in md
+
+
+def test_markdown_keeps_a_trailing_hash_in_the_title():
+    md = to_markdown(_report(title="Cart badge shows #"))
+
+    assert md.startswith("# Cart badge shows \#\n")
+
+
+def test_file_stem_transliterates_vietnamese_titles():
+    assert file_stem("Ứng dụng bị treo khi thanh toán") == "bug_Ung_dung_bi_treo_khi_thanh_toan"
+    assert file_stem("Đăng nhập thất bại") == "bug_Dang_nhap_that_bai"
+    assert file_stem("!!!") == "bug_report"
+
+
+def test_markdown_does_not_double_escape_a_hash_only_title():
+    assert to_markdown(_report(title="#")).startswith("# \#\n")

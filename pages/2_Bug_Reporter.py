@@ -3,6 +3,7 @@ Bug Reporter — turns a tester's rough notes about one defect, or the failed
 rows of an executed test run, into structured bug reports, exported as
 Markdown or Excel.
 """
+import hashlib
 import json
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from core.bug_batch import (
     write_reports,
 )
 from core.bug_exporters import file_stem, missing_required_fields, to_excel, to_markdown
-from core.file_import import FileImportError, parse_uploaded_file
+from core.file_import import FileImportError, parse_uploaded_rows
 from core.prompt_builder import (
     BUG_REPORT_PROMPT_PATH,
     ProjectConfigError,
@@ -263,6 +264,8 @@ def _render_batch_result() -> None:
         },
     )
     reports = apply_summary_edits(result["reports"], edited.to_dict("records"))
+    # Keep the edits outside the widget: its state is dropped when the user leaves the page.
+    result["reports"] = reports
 
     stem = f"bug_reports_{st.session_state.get('batch_project', 'project')}"
     col_xlsx, col_md = st.columns(2)
@@ -276,6 +279,7 @@ def _render_batch_result() -> None:
             key="download_batch_md",
         )
     _usage_caption(result["usage"])
+    st.caption(f"Built from {st.session_state.get('batch_source', 'the uploaded file')}.")
 
 
 def _render_run_tab(configs: list[str]) -> None:
@@ -283,16 +287,24 @@ def _render_run_tab(configs: list[str]) -> None:
     project = st.selectbox("Project", configs, key="run_project_select")
     if uploaded is None:
         st.info("Upload a test run with a status column and an actual result column.")
+        # The uploader forgets its file when the user leaves the page; the paid results must not.
+        if "batch_result" in st.session_state:
+            _render_batch_result()
         return
     try:
-        raw_rows = parse_uploaded_file(uploaded)
+        raw_rows, row_numbers = parse_uploaded_rows(uploaded)
     except FileImportError as e:
         st.error(str(e))
         return
 
     headers = list(raw_rows[0].keys())
-    if st.session_state.get("run_mapped_file_name") != uploaded.name:
+    # Name plus content: a re-exported run often keeps the same file name.
+    file_id = f"{uploaded.name}:{hashlib.sha256(uploaded.getvalue()).hexdigest()}"
+    if st.session_state.get("run_mapped_file_id") != file_id:
         # A new file: suggest a mapping once and drop results that belong to the old file.
+        # Keyed widgets ignore new defaults once they hold state, so clear the per-file ones.
+        for key in [k for k in st.session_state if k.startswith(("run_mapping_", "run_failed_values_"))]:
+            del st.session_state[key]
         try:
             client = AIClient(api_key=st.session_state.get("api_key") or None)
             suggestion = client.suggest_column_mapping(
@@ -302,7 +314,7 @@ def _render_run_tab(configs: list[str]) -> None:
             st.warning(f"Could not get a column mapping suggestion: {e}")
             suggestion = {}
         st.session_state["run_mapping_suggestion"] = suggestion
-        st.session_state["run_mapped_file_name"] = uploaded.name
+        st.session_state["run_mapped_file_id"] = file_id
         st.session_state.pop("batch_result", None)
 
     st.markdown("**Confirm column mapping** — test case columns are optional context for the AI:")
@@ -328,7 +340,7 @@ def _render_run_tab(configs: list[str]) -> None:
             default=default_failed_values(values),
             key=f"run_failed_values_{mapping['status']}",
         )
-        rows = failed_rows(raw_rows, mapping, chosen)
+        rows = failed_rows(raw_rows, mapping, chosen, row_numbers=row_numbers)
         if not rows:
             st.info("No rows have the selected status values.")
         elif len(rows) > MAX_BATCH_ROWS:
@@ -357,6 +369,7 @@ def _render_run_tab(configs: list[str]) -> None:
             on_progress=lambda done, total: progress.progress(done / total, text=f"Written {done} of {total}"),
         )
         st.session_state["batch_project"] = project
+        st.session_state["batch_source"] = uploaded.name
 
     if "batch_result" in st.session_state:
         _render_batch_result()

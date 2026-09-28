@@ -275,9 +275,10 @@ def test_run_writes_reports_and_lists_errors(monkeypatch):
 
     assert not at.exception
     result = at.session_state["batch_result"]
-    assert [r["source"] for r in result["reports"]] == ["run.xlsx, row 1"]
-    assert result["errors"] == [{"row": 3, "test_id": "TC_3", "error": "boom"}]
-    assert any("Row 3 (TC_3): boom" in e.value for e in at.error)
+    # Sheet rows: the header is row 1, so TC_1 is row 2 and TC_3 is row 4.
+    assert [r["source"] for r in result["reports"]] == ["run.xlsx, row 2"]
+    assert result["errors"] == [{"row": 4, "test_id": "TC_3", "error": "boom"}]
+    assert any("Row 4 (TC_3): boom" in e.value for e in at.error)
     assert "download_batch_xlsx" in calls and "download_batch_md" in calls
 
 
@@ -319,3 +320,46 @@ def test_run_new_upload_clears_previous_results(monkeypatch):
     _upload_run(at, name="run2.xlsx")
 
     assert "batch_result" not in at.session_state
+
+
+def test_run_same_file_name_with_new_content_resets_results_mapping_and_values(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+    with patch.object(AIClient, "write_bug_report", return_value=_fake_result()):
+        at.button(key="write_batch_btn").click().run(timeout=30)
+    assert "batch_result" in at.session_state
+
+    second_rows = [["TC_9", "Pay", "1. Pay", "NG", "Crash", ""], ["TC_10", "Login", "1. Login", "OK", "OK", ""]]
+    second_mapping = {"mapping": dict(RUN_MAPPING["mapping"], comment="")}
+    _upload_run(at, rows=second_rows, name="run.xlsx", mapping=second_mapping)
+
+    assert not at.exception
+    assert "batch_result" not in at.session_state
+    assert at.selectbox(key="run_mapping_comment").value == ""
+    assert at.multiselect(key="run_failed_values_Status").value == ["NG"]
+    assert any("**1** failed row(s)" in m.value for m in at.markdown)
+
+
+def test_run_results_survive_switching_pages(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH.parent.parent / "app.py"))
+    at.run(timeout=30)
+    at.switch_page("pages/2_Bug_Reporter.py").run(timeout=30)
+    _upload_run(at)
+    with patch.object(AIClient, "write_bug_report", return_value=_fake_result()):
+        at.button(key="write_batch_btn").click().run(timeout=30)
+
+    at.switch_page("pages/1_Reviewer.py").run(timeout=30)
+    calls = []
+    real_download_button = st.download_button
+
+    def _spy(*args, **kwargs):
+        calls.append(kwargs.get("key"))
+        return real_download_button(*args, **kwargs)
+
+    with patch.object(st, "download_button", _spy):
+        at.switch_page("pages/2_Bug_Reporter.py").run(timeout=30)
+
+    assert not at.exception
+    assert "download_batch_xlsx" in calls
+    assert any("run.xlsx" in c.value for c in at.caption)

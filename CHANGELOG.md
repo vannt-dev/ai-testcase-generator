@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add the Heal Locators page: upload a failing Playwright page object with the error and the
+  page's current HTML, and get only its broken locators repaired, with a verdict that flags
+  possible app bugs, a per-fix choice, a diff, and a download that keeps every other line.
 - Add the Automation page: turn up to 10 web test cases into a Playwright + TypeScript project
   with page objects, downloadable as a zip. Paste each page's HTML or ARIA snapshot for accurate
   locators; anything the AI cannot express becomes a `test.fixme` with a TODO instead of a guess.

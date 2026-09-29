@@ -24,6 +24,7 @@ one config file, no code changes needed.
 - Suggests and lets the user confirm column mappings for external files
 - Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
 - Turns web test cases into a runnable Playwright + TypeScript project (page objects, specs, zip download)
+- Repairs broken locators in a Playwright page object from the error and the page's current HTML, and shows a diff before you download
 
 ## Architecture
 
@@ -45,7 +46,8 @@ ai-testcase-generator/
 ├── pages/
 │   ├── 1_Reviewer.py            # Coverage review, gap generation, merge/export
 │   ├── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
-│   └── 3_Automation.py          # Playwright project from web test cases
+│   ├── 3_Automation.py          # Playwright project from web test cases
+│   └── 4_Heal_Locators.py       # Repairs broken locators in a page object
 ├── core/
 │   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
 │   ├── file_import.py            # Safely parses uploaded .xlsx/.csv files
@@ -57,7 +59,8 @@ ai-testcase-generator/
 │   ├── bug_batch.py              # Bug reports from the failed rows of a test run
 │   ├── automation_inputs.py      # Checks Automation page input before the AI call
 │   ├── automation_validate.py    # Cleans AI automation output (names, references)
-│   └── playwright_renderer.py    # Renders page objects, specs and the project zip
+│   ├── playwright_renderer.py    # Renders page objects, specs and the project zip
+│   └── locator_healing.py        # Finds, validates and patches page object locators
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
 │   └── example_ecommerce.yaml    # Sample config
@@ -67,7 +70,8 @@ ai-testcase-generator/
 │   ├── column_mapping_system_prompt.md
 │   ├── bug_report_system_prompt.md # Writes one bug report from notes
 │   ├── run_column_mapping_system_prompt.md
-│   └── automation_system_prompt.md # Turns web test cases into Playwright steps
+│   ├── automation_system_prompt.md # Turns web test cases into Playwright steps
+│   └── locator_healing_system_prompt.md # Repairs broken locators, flags possible bugs
 ├── scripts/render_automation_fixture.py # Renders the fixture project CI type-checks
 ├── tests/                        # pytest (core logic + all Streamlit pages)
 ├── .github/workflows/tests.yml   # CI: pytest, plus tsc on a generated Playwright project
@@ -169,6 +173,19 @@ ID, date, reporter and status.
 Steps the AI cannot express become `test.fixme` with a TODO, and the
 project's README lists every test and locator that still needs a human.
 
+### Heal broken locators
+
+1. Open **Heal Locators** in Streamlit's page navigation
+2. Upload the failing page object (`pages/<Name>.ts` from the generated project,
+   hand-edited files work too), paste the Playwright error and the page's current
+   HTML or ARIA snapshot
+3. Click **Heal locators**, read the verdict, untick any fix you don't want and
+   download the patched file
+
+Only the locator lines change; each healed line gets a `// healed:` comment.
+When the AI says the element is gone or the app's behaviour changed, check the
+app before touching the test: it may be a real bug.
+
 ## Running tests
 
 ```bash
@@ -206,6 +223,7 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   questions, stays literal even when it begins with a spreadsheet formula prefix.
 - Page HTML/ARIA snapshots pasted on the Automation page are sent to
   Anthropic with the test cases; remove tokens and personal data first. The
+  Heal Locators page sends the pasted error and snapshot the same way. The
   Base URL stays local: it is written to `playwright.config.ts` only. The AI is
   told to write passwords and tokens as `${ENV:NAME}`, read from `.env`; still
   review the generated test data before sharing the project.
@@ -228,7 +246,7 @@ cp configs/_template.yaml configs/your_project_name.yaml
 - [x] Phase 3, step 1: Bug Report Writer with tracker-neutral Markdown/Excel export
 - [x] Phase 3, step 2: Bug reports from the failed rows of an executed test run
 - [x] Phase 4, step 1: Playwright + TypeScript project generated from web test cases
-- [ ] Phase 4, step 2: Self-healing — repair locators from a failing test's error and fresh HTML
+- [x] Phase 4, step 2: Self-healing — repair locators from a failing test's error and fresh HTML
 
 ## Notes
 

@@ -8,6 +8,8 @@ import re
 import unicodedata
 
 STRATEGIES = {"role", "label", "placeholder", "text", "test_id", "css"}
+# A secret the generated project reads from .env: the whole value is ${ENV:NAME}.
+ENV_VALUE = re.compile(r"^\$\{ENV:([A-Z][A-Z0-9_]*)\}$")
 
 # Fields each action needs (see the spec's action table).
 ACTION_FIELDS = {
@@ -112,6 +114,29 @@ def _unique(name: str, used: set[str]) -> str:
     return candidate
 
 
+class _Lookup:
+    """Resolves a name the AI used in a step: exact raw names win over cleaned
+    ones, so "LoginPage" finds the page the AI called "LoginPage" even when an
+    earlier "Login Page" was also cleaned to "LoginPage"."""
+
+    def __init__(self):
+        self.raw: dict[str, object] = {}
+        self.cleaned: dict[str, object] = {}
+
+    def add(self, raw_name: str, cleaned_name: str, value) -> None:
+        self.raw[raw_name] = value
+        self.cleaned.setdefault(cleaned_name, value)
+
+    def __contains__(self, raw_name: str) -> bool:
+        return raw_name in self.raw
+
+    def get(self, name: str):
+        for candidate in dict.fromkeys((name, name.strip())):
+            if candidate in self.raw:
+                return self.raw[candidate]
+        return self.cleaned.get(name.strip())
+
+
 def _text(value) -> str:
     return "" if value is None else str(value)
 
@@ -130,7 +155,7 @@ def validate_automation(result: dict, modules: dict[str, str]) -> tuple[dict, li
 
 def _clean_pages(raw_pages: list[dict], warnings: list[str]):
     pages: list[dict] = []
-    lookup: dict[str, tuple[dict, dict]] = {}
+    lookup = _Lookup()
     used_names: set[str] = set()
     used_vars: set[str] = set()
     for raw in raw_pages:
@@ -147,14 +172,13 @@ def _clean_pages(raw_pages: list[dict], warnings: list[str]):
             "locators": locators,
         }
         pages.append(page)
-        lookup[raw_name] = (page, keys)
-        lookup.setdefault(name, (page, keys))
+        lookup.add(raw_name, name, (page, keys))
     return pages, lookup
 
 
 def _clean_locators(page_name: str, raw_locators: list[dict], warnings: list[str]):
     locators: list[dict] = []
-    keys: dict[str, str] = {}
+    keys = _Lookup()
     used: set[str] = set()
     for raw in raw_locators:
         raw_key = _text(raw.get("key"))
@@ -179,16 +203,19 @@ def _clean_locators(page_name: str, raw_locators: list[dict], warnings: list[str
         if locator["strategy"] != "role":
             locator["role"] = ""
         locators.append(locator)
-        keys[raw_key] = key
-        keys.setdefault(key, key)
+        keys.add(raw_key, key, key)
     return locators, keys
 
 
 def _clean_tests(raw_tests, lookup, modules, warnings) -> list[dict]:
     tests: list[dict] = []
     used_ids: set[str] = set()
+    returned_ids: set[str] = set()
     for raw in raw_tests:
         raw_id = _text(raw.get("test_id")).strip() or "TC"
+        if raw_id not in modules and raw_id not in returned_ids:
+            warnings.append(f"{raw_id} was not among the selected test cases.")
+        returned_ids.add(raw_id)
         test_id, number = raw_id, 2
         while test_id in used_ids:
             test_id = f"{raw_id}_{number}"
@@ -209,6 +236,9 @@ def _clean_tests(raw_tests, lookup, modules, warnings) -> list[dict]:
             "module": _text(modules.get(raw_id, "")),
             "steps": steps,
         })
+    for selected_id in modules:
+        if selected_id and selected_id not in returned_ids:
+            warnings.append(f"{selected_id} was selected but the AI returned no test for it.")
     return tests
 
 
@@ -228,6 +258,10 @@ def _clean_step(test_id, index, step, lookup, warnings) -> dict:
         return _todo(source or action)
 
     cleaned = {"action": action, "page": "", "locator": "", "value": _text(step.get("value")), "source": source}
+    if action == "expect_url" and ENV_VALUE.match(cleaned["value"]):
+        warnings.append(
+            f"{prefix}: expect_url does not read environment values; '{cleaned['value']}' is matched literally."
+        )
     if "page" in required:
         entry = lookup.get(_text(step.get("page")))
         if entry is None:

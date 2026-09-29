@@ -11,7 +11,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
-from core.automation_inputs import MAX_CASES, MAX_PAGES, input_problems, signature, web_cases
+from core.automation_inputs import BASE_URL, MAX_CASES, MAX_PAGES, input_problems, signature, web_cases
 from core.automation_validate import validate_automation
 from core.file_import import FileImportError, parse_uploaded_file
 from core.playwright_renderer import build_zip, project_root, render_project, summarize
@@ -219,6 +219,10 @@ def _render_result(stored: dict, base_url: str) -> None:
     preview = st.selectbox("Preview file", list(files), key="automation_preview_file")
     st.code(files[preview], language=PREVIEW_LANGUAGES.get(Path(preview).suffix, "text"))
 
+    if not BASE_URL.match(base_url):
+        # The zip's playwright.config.ts would fall back to this URL; don't hand out one that can't run.
+        st.warning("Enter a valid Base URL to download the project.")
+        return
     root = project_root(stored["project_name"])
     st.download_button(
         "⬇️ Download project (.zip)",

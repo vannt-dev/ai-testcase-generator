@@ -277,3 +277,9 @@ def test_windows_reserved_module_names_get_a_suffix():
 
     assert "tests/con-tests.spec.ts" in files
     assert "tests/lpt1-tests.spec.ts" in files
+
+
+def test_env_placeholder_in_expect_url_is_not_listed_in_env_example():
+    tests = [{"test_id": "TC_1", "title": "t", "module": "", "steps": [_step("expect_url", value="${ENV:HOME_URL}")]}]
+
+    assert render_project(_result(tests), "Demo", "https://x.test")[".env.example"] == "BASE_URL=https://x.test\n"

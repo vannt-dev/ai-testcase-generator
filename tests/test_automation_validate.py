@@ -63,7 +63,7 @@ def test_steps_may_reference_the_raw_or_the_cleaned_page_name():
         _step("click", page="TrangChu", locator="menu"),
     ]}])
 
-    cleaned, warnings = validate_automation(raw, {})
+    cleaned, warnings = validate_automation(raw, {"TC_1": ""})
 
     assert warnings == []
     assert [s["page"] for s in cleaned["tests"][0]["steps"]] == ["TrangChu", "TrangChu"]
@@ -229,3 +229,69 @@ def test_windows_reserved_page_names_get_a_suffix():
     assert to_pascal("con") == "ConPage"
     assert to_pascal("NUL") == "NULPage"
     assert to_pascal("com1") == "Com1Page"
+
+
+def test_selected_cases_the_ai_left_out_are_warned():
+    tests = [{"test_id": "TC_1", "title": "a", "steps": [_step("todo")]}]
+    _, warnings = validate_automation(_result([], tests), {"TC_1": "", "TC_2": ""})
+
+    assert "TC_2 was selected but the AI returned no test for it." in warnings
+
+
+def test_test_ids_that_were_not_selected_are_warned():
+    tests = [{"test_id": "TC_9", "title": "a", "steps": [_step("todo")]}]
+    _, warnings = validate_automation(_result([], tests), {"TC_1": ""})
+
+    assert "TC_9 was not among the selected test cases." in warnings
+    assert "TC_1 was selected but the AI returned no test for it." in warnings
+
+
+def test_a_raw_name_matching_another_pages_cleaned_name_is_its_own_page():
+    pages = [
+        {"name": "Login Page", "path": "/a", "locators": [_locator("pw")]},
+        {"name": "LoginPage", "path": "/b", "locators": [_locator("email")]},
+    ]
+    raw = _result(pages, [{"test_id": "TC_1", "title": "t", "steps": [
+        _step("click", page="Login Page", locator="pw"),
+        _step("click", page="LoginPage", locator="email"),
+    ]}])
+    cleaned, warnings = validate_automation(raw, {"TC_1": ""})
+
+    assert warnings == []
+    assert [p["name"] for p in cleaned["pages"]] == ["LoginPage", "LoginPage2"]
+    assert [(s["page"], s["locator"]) for s in cleaned["tests"][0]["steps"]] == [
+        ("LoginPage", "pw"), ("LoginPage2", "email"),
+    ]
+
+
+def test_a_raw_locator_key_matching_another_cleaned_key_is_its_own_locator():
+    page = {"name": "P", "path": "/", "locators": [
+        _locator("email input", value="A"), _locator("emailInput", value="B"),
+    ]}
+    raw = _result([page], [{"test_id": "TC_1", "title": "t", "steps": [
+        _step("click", page="P", locator="email input"),
+        _step("click", page="P", locator="emailInput"),
+    ]}])
+    cleaned, warnings = validate_automation(raw, {"TC_1": ""})
+
+    assert warnings == []
+    assert [loc["key"] for loc in cleaned["pages"][0]["locators"]] == ["emailInput", "emailInput2"]
+    assert [s["locator"] for s in cleaned["tests"][0]["steps"]] == ["emailInput", "emailInput2"]
+
+
+def test_step_references_ignore_surrounding_whitespace():
+    raw = _result([LOGIN], [{"test_id": "TC_1", "title": "t", "steps": [
+        _step("fill", page=" LoginPage ", locator=" emailInput", value=" keep spaces "),
+    ]}])
+    cleaned, warnings = validate_automation(raw, {"TC_1": ""})
+
+    assert warnings == []
+    assert cleaned["tests"][0]["steps"][0]["page"] == "LoginPage"
+    assert cleaned["tests"][0]["steps"][0]["value"] == " keep spaces "
+
+
+def test_env_placeholder_in_expect_url_is_warned():
+    raw = _result([], [{"test_id": "TC_1", "title": "t", "steps": [_step("expect_url", value="${ENV:HOME_URL}")]}])
+    _, warnings = validate_automation(raw, {"TC_1": ""})
+
+    assert "TC_1 step 1: expect_url does not read environment values; '${ENV:HOME_URL}' is matched literally." in warnings

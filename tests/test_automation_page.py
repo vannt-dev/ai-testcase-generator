@@ -196,3 +196,15 @@ def test_regenerated_session_cases_with_the_same_ids_clear_the_result(monkeypatc
     at.run(timeout=30)
 
     assert "automation_result" not in at.session_state
+
+
+def test_download_is_hidden_until_the_base_url_is_valid_again(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1")])
+    _generate(at)
+    assert len(at.get("download_button")) == 1
+
+    at.text_input(key="automation_base_url").set_value("").run(timeout=30)
+
+    assert "automation_result" in at.session_state
+    assert len(at.get("download_button")) == 0
+    assert any("valid Base URL to download" in warning.value for warning in at.warning)

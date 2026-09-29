@@ -9,9 +9,8 @@ import json
 import re
 import zipfile
 
-from core.automation_validate import WINDOWS_RESERVED, ascii_fold
+from core.automation_validate import ENV_VALUE, WINDOWS_RESERVED, ascii_fold
 
-ENV_VALUE = re.compile(r"^\$\{ENV:([A-Z][A-Z0-9_]*)\}$")
 _REGEX_SPECIAL = re.compile(r"[.*+?^${}()|[\]\\/]")
 
 
@@ -170,7 +169,8 @@ def _env_names(result: dict) -> list[str]:
     names = set()
     for test in result["tests"]:
         for step in test["steps"]:
-            match = ENV_VALUE.match(step["value"])
+            # expect_url matches its value literally, so it never reads .env.
+            match = step["action"] != "expect_url" and ENV_VALUE.match(step["value"])
             if match:
                 names.add(match.group(1))
     return sorted(names)

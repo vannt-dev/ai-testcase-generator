@@ -37,7 +37,10 @@ locator model simple so that step 2 can reuse it.
 - Input from the test cases in the session (`last_result`) or from an
   uploaded `.xlsx`/`.csv`. The upload goes through the existing
   `parse_uploaded_file` and the AI-suggested column mapping.
-- Choosing up to 20 web test cases per generation.
+- Choosing up to 10 web test cases per generation. The call is non-streaming
+  with the app's existing `max_tokens=16000`, which the Anthropic SDK
+  recommends as the ceiling for non-streaming requests; 10 cases with page
+  objects fit in that budget.
 - Base URL, plus up to 10 pages (name, path, optional HTML/ARIA snapshot).
 - A preview of the generated files and a zip download.
 
@@ -102,10 +105,21 @@ literal. The AI writes the value as `${ENV:NAME}`, where `NAME` matches
 
 ## Validation (`core/automation_validate.py`)
 
-`validate_automation(result: dict) -> tuple[dict, list[str]]` returns a
-cleaned result and a list of human-readable warnings. It never raises on
-AI output. It checks:
+`validate_automation(result: dict, modules: dict[str, str]) -> tuple[dict, list[str]]`
+returns a cleaned result and a list of human-readable warnings. It never
+raises on AI output. `modules` maps each selected `test_id` to its
+`TestCase.module`; the validator copies it onto each test as `module` (empty
+when unknown) so the renderer can group tests into files. It checks:
 
+- Non-ASCII names (for example Vietnamese) are transliterated before
+  sanitizing (`Đăng nhập` → `DangNhap`); a name with nothing left becomes
+  `UnnamedPage` / `element`. Identifiers that collide with TypeScript
+  reserved words or with the generated code's own names (`page`, `path`,
+  `goto`, `constructor`; classes `Page`, `Locator`, `Test`, `Expect`) get a
+  suffix.
+- A `role` outside Playwright's ARIA role list falls back to
+  `strategy = "text"` with `confident = False` and a warning, so the output
+  always type-checks.
 - Page names are sanitized to PascalCase identifiers and locator keys to
   camelCase identifiers. When sanitizing produces a clash, `2`, `3`, … is
   appended.
@@ -125,7 +139,7 @@ AI output. It checks:
 
 Pure Python with no Streamlit and no AI calls.
 
-- `render_project(result, project_name, base_url) -> dict[str, str]`
+- `render_project(result, project_name, base_url) -> dict[str, str]` (tests carry `module` from validation)
   (a mapping from path to content)
 - `build_zip(files, root_dir) -> bytes`
 
@@ -135,7 +149,8 @@ Zip layout:
 <project-slug>-playwright/
 ├── package.json            # devDependencies pinned: @playwright/test, typescript, @types/node;
 │                           # scripts test, test:ui, report, typecheck (tsc --noEmit); no lockfile
-├── playwright.config.ts    # baseURL: process.env.BASE_URL ?? '<base_url>'; trace on-first-retry
+├── playwright.config.ts    # loads .env via process.loadEnvFile (Node >= 20.12) when present;
+│                           # baseURL: process.env.BASE_URL ?? '<base_url>'; trace on-first-retry
 ├── tsconfig.json
 ├── .env.example            # BASE_URL plus every ${ENV:NAME} used
 ├── .gitignore              # node_modules, test-results, playwright-report, .env
@@ -193,10 +208,12 @@ Rendering rules:
   for secrets; ask in `open_questions` rather than guess.
 - In the user content, each test case goes inside `<test_case>` tags. Each
   page's snapshot goes inside `<page name="…" path="…">` tags, with the
-  instruction that the content is data and not instructions.
-- `_call_ai` gains an optional `max_tokens` argument, and this call uses
-  32000. The existing `stop_reason == "max_tokens"` error text applies, and the
-  UI message suggests selecting fewer test cases.
+  instruction that the content is data and not instructions. A closing
+  `</page` or `</test_case` inside pasted content is neutralised
+  (`<\/page`) so it cannot end its tag early.
+- The call goes through the existing `_call_ai` unchanged (`max_tokens=16000`).
+  On `stop_reason == "max_tokens"` the page adds a hint to select fewer test
+  cases.
 
 ## UI (`pages/3_Automation.py`)
 
@@ -213,7 +230,7 @@ Rendering rules:
    snapshot). A caption explains how to get an ARIA snapshot and warns that
    pasted HTML is sent to Anthropic, so tokens and personal data should be removed first.
 6. The Generate button is disabled, with the reason shown, when: nothing is
-   selected; more than 20 selected; the Base URL is not `http(s)://`; there
+   selected; more than 10 selected; the Base URL is not `http(s)://`; there
    are more than 10 pages; a page name or path is empty or duplicated; a
    snapshot is over 50,000 characters.
 7. Results: metrics (tests, `fixme` tests, locators to verify, token
@@ -246,7 +263,7 @@ Rendering rules:
   - a golden snapshot of a small fixture project under `tests/fixtures/`.
 - `tests/test_ai_client.py`, `tests/test_ai_client_schemas.py`:
   `generate_automation` passes `AutomationResult`, wraps test cases and
-  snapshots in their tags, uses `max_tokens=32000`, and reports usage.
+  snapshots in their tags (neutralising closing tags), and reports usage.
 - `tests/test_automation_page.py`: `AppTest` covers both sources, the
   platform filter, the disabled-button reasons, and state reset.
 - CI: a new job, `automation-smoke` (Node 20). It renders the fixture

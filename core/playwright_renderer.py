@@ -9,7 +9,7 @@ import json
 import re
 import zipfile
 
-from core.automation_validate import ascii_fold
+from core.automation_validate import WINDOWS_RESERVED, ascii_fold
 
 ENV_VALUE = re.compile(r"^\$\{ENV:([A-Z][A-Z0-9_]*)\}$")
 _REGEX_SPECIAL = re.compile(r"[.*+?^${}()|[\]\\/]")
@@ -269,7 +269,10 @@ def render_project(result: dict, project_name: str, base_url: str) -> dict[str, 
         files[f"pages/{page['name']}.ts"] = render_page(page)
     groups: dict[str, list[dict]] = {}
     for test in result["tests"]:
-        groups.setdefault(slug(test.get("module", "")) or "general", []).append(test)
+        module = slug(test.get("module", "")) or "general"
+        if module in WINDOWS_RESERVED:
+            module += "-tests"
+        groups.setdefault(module, []).append(test)
     for module, tests in sorted(groups.items()):
         files[f"tests/{module}.spec.ts"] = render_spec(tests, pages_by_name)
     files["package.json"] = _package_json(project_root(project_name))

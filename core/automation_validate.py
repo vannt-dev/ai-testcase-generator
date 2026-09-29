@@ -48,8 +48,13 @@ implements interface let package private protected public static yield
 await any boolean number string symbol type
 """.split())
 # Names the generated code itself uses: page-object members and test globals.
-MEMBER_RESERVED = TS_RESERVED | {"page", "path", "goto", "constructor", "test", "expect"}
-CLASS_RESERVED = {"Page", "Locator"}
+MEMBER_RESERVED = TS_RESERVED | {"page", "path", "goto", "constructor", "test", "expect", "process"}
+# Page classes are imported into specs, so they must not shadow globals the specs use.
+CLASS_RESERVED = {"Page", "Locator", "RegExp"}
+# Device names Windows 10 cannot extract as files (con.ts, nul.spec.ts, ...).
+WINDOWS_RESERVED = frozenset(
+    ["con", "prn", "aux", "nul"] + [f"com{n}" for n in range(1, 10)] + [f"lpt{n}" for n in range(1, 10)]
+)
 
 
 def ascii_fold(text: str) -> str:
@@ -74,6 +79,8 @@ def to_pascal(text: str) -> str:
         name = "Page" + name
     if name in CLASS_RESERVED:
         name += "Object"
+    elif name.lower() in WINDOWS_RESERVED:
+        name += "Page"
     return name
 
 

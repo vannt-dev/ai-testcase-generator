@@ -6,7 +6,6 @@
   with page objects, downloadable as a zip. Paste each page's HTML or ARIA snapshot for accurate
   locators; anything the AI cannot express becomes a `test.fixme` with a TODO instead of a guess.
   Secrets go to `.env` through `${ENV:NAME}` placeholders. CI type-checks a rendered fixture project.
-
 - Add the Bug Reporter page: turn rough notes about a defect into a structured bug report
   (severity, priority, steps, expected/actual, open questions), edit it, and export it as
   Markdown or Excel. The AI asks for missing details instead of inventing them.

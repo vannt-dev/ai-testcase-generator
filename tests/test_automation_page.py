@@ -186,3 +186,13 @@ def test_new_upload_content_clears_result(monkeypatch):
 
     assert suggest.call_count == 2
     assert "automation_result" not in at.session_state
+
+
+def test_regenerated_session_cases_with_the_same_ids_clear_the_result(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1")])
+    _generate(at)
+    changed = {**_case("TC_1"), "steps": "1. Open the new login page"}
+    at.session_state["last_result"] = {"test_cases": [changed], "summary": {}}
+    at.run(timeout=30)
+
+    assert "automation_result" not in at.session_state

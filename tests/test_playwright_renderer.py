@@ -269,3 +269,11 @@ def test_zip_rejects_unsafe_paths(bad_path):
 def test_zip_rejects_unsafe_root():
     with pytest.raises(ValueError):
         build_zip({"a.ts": "x"}, "../demo")
+
+
+def test_windows_reserved_module_names_get_a_suffix():
+    tests = [{**ONE_TEST[0], "module": "Con"}, {**ONE_TEST[0], "test_id": "TC_2", "module": "lpt1"}]
+    files = render_project(_result(tests), "Demo", "https://x.test")
+
+    assert "tests/con-tests.spec.ts" in files
+    assert "tests/lpt1-tests.spec.ts" in files

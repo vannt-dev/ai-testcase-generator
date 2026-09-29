@@ -244,7 +244,8 @@ if not configs:
     st.stop()
 project = st.selectbox("Project", configs, key="automation_project_select")
 
-editor_key = "automation_cases_" + signature(source, file_id)[:12]
+# Keyed on the full cases: regenerated cases often reuse the same test IDs.
+editor_key = "automation_cases_" + signature(source, file_id, cases)[:12]
 selected = _select_cases(cases, editor_key) if cases else []
 
 base_url = st.text_input(
@@ -253,7 +254,7 @@ base_url = st.text_input(
 ).strip()
 pages = _page_inputs()
 
-current_signature = signature(source, file_id, project, [case.get("test_id", "") for case in selected])
+current_signature = signature(source, file_id, project, selected)
 stored = st.session_state.get("automation_result")
 if stored and stored["signature"] != current_signature:
     del st.session_state["automation_result"]

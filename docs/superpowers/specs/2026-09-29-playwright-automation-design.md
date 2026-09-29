@@ -115,9 +115,11 @@ when unknown) so the renderer can group tests into files. It checks:
 - Non-ASCII names (for example Vietnamese) are transliterated before
   sanitizing (`Đăng nhập` → `DangNhap`); a name with nothing left becomes
   `UnnamedPage` / `element`. Identifiers that collide with TypeScript
-  reserved words or with the generated code's own names (`page`, `path`,
-  `goto`, `constructor`; classes `Page`, `Locator`, `Test`, `Expect`) get a
-  suffix.
+  reserved words or with names the generated code uses (`page`, `path`,
+  `goto`, `constructor`, `test`, `expect`, `process`; classes `Page`,
+  `Locator`, `RegExp`) get a suffix. Page and module names that are Windows
+  device names (`con`, `nul`, `aux`, `prn`, `com1`–`com9`, `lpt1`–`lpt9`)
+  get a suffix too, so the zip extracts on Windows 10.
 - A `role` outside Playwright's ARIA role list falls back to
   `strategy = "text"` with `confident = False` and a warning, so the output
   always type-checks.

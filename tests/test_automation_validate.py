@@ -212,3 +212,20 @@ def test_unknown_module_is_empty():
     cleaned, _ = validate_automation(_result([], [{"test_id": "TC_9", "title": "a", "steps": [_step("todo")]}]), {})
 
     assert cleaned["tests"][0]["module"] == ""
+
+
+def test_names_that_shadow_globals_used_by_the_generated_code_get_a_suffix():
+    pages = [
+        {"name": "RegExp", "path": "/r", "locators": []},
+        {"name": "Process", "path": "/p", "locators": []},
+    ]
+    cleaned, _ = validate_automation(_result(pages, []), {})
+
+    assert [p["name"] for p in cleaned["pages"]] == ["RegExpObject", "Process"]
+    assert [p["var"] for p in cleaned["pages"]] == ["regExpObject", "processPage"]
+
+
+def test_windows_reserved_page_names_get_a_suffix():
+    assert to_pascal("con") == "ConPage"
+    assert to_pascal("NUL") == "NULPage"
+    assert to_pascal("com1") == "Com1Page"

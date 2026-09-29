@@ -103,6 +103,54 @@ class BugReport(BaseModel):
     open_questions: list[str]
 
 
+class Locator(BaseModel):
+    """One element on a page, as a Playwright locator strategy + value."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    key: str
+    strategy: Literal["role", "label", "placeholder", "text", "test_id", "css"]
+    role: str
+    value: str
+    confident: bool
+
+
+class PageObject(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str
+    path: str
+    locators: list[Locator]
+
+
+class Step(BaseModel):
+    """One test step; unused fields are empty strings."""
+
+    action: Literal[
+        "goto", "click", "fill", "select", "check", "uncheck", "press",
+        "expect_visible", "expect_hidden", "expect_text", "expect_value",
+        "expect_url", "todo",
+    ]
+    page: str
+    locator: str
+    value: str
+    source: str
+
+
+class AutomatedTest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    test_id: str
+    title: str
+    steps: list[Step]
+
+
+class AutomationResult(BaseModel):
+    pages: list[PageObject]
+    tests: list[AutomatedTest]
+    open_questions: list[str]
+
+
 class AIClient:
     def __init__(
         self,

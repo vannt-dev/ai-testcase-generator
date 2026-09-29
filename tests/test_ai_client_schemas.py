@@ -1,8 +1,16 @@
 """Pure schema/unit tests for the Reviewer Pydantic models (no AI client mocking)."""
+import copy
 import pydantic
 import pytest
 
-from core.ai_client import BugReport, ColumnMappingResult, CoverageGap, DuplicateGroup, ReviewResult
+from core.ai_client import (
+    AutomationResult,
+    BugReport,
+    ColumnMappingResult,
+    CoverageGap,
+    DuplicateGroup,
+    ReviewResult,
+)
 
 VALID_GAP = {
     "description": "No test for OTP resend after expiry",
@@ -157,3 +165,60 @@ def test_bug_report_accepts_valid_payload():
 def test_bug_report_rejects_invalid_values(overrides):
     with pytest.raises(pydantic.ValidationError):
         BugReport.model_validate(_bug_payload(**overrides))
+
+
+# ---------- AutomationResult ----------
+
+VALID_AUTOMATION = {
+    "pages": [
+        {
+            "name": "LoginPage",
+            "path": "/login",
+            "locators": [
+                {"key": "emailInput", "strategy": "label", "role": "", "value": "Email", "confident": True}
+            ],
+        }
+    ],
+    "tests": [
+        {
+            "test_id": "TC_001",
+            "title": "Login works",
+            "steps": [
+                {"action": "fill", "page": "LoginPage", "locator": "emailInput",
+                 "value": "a@b.c", "source": "Enter email"}
+            ],
+        }
+    ],
+    "open_questions": [],
+}
+
+
+def test_automation_result_accepts_valid_input():
+    result = AutomationResult.model_validate(VALID_AUTOMATION)
+
+    assert result.tests[0].steps[0].action == "fill"
+    assert result.pages[0].locators[0].strategy == "label"
+
+
+def test_automation_result_rejects_unknown_action():
+    data = copy.deepcopy(VALID_AUTOMATION)
+    data["tests"][0]["steps"][0]["action"] = "hover"
+
+    with pytest.raises(pydantic.ValidationError):
+        AutomationResult.model_validate(data)
+
+
+def test_automation_result_rejects_unknown_strategy():
+    data = copy.deepcopy(VALID_AUTOMATION)
+    data["pages"][0]["locators"][0]["strategy"] = "xpath"
+
+    with pytest.raises(pydantic.ValidationError):
+        AutomationResult.model_validate(data)
+
+
+def test_automation_result_requires_every_step_field():
+    data = copy.deepcopy(VALID_AUTOMATION)
+    del data["tests"][0]["steps"][0]["value"]
+
+    with pytest.raises(pydantic.ValidationError):
+        AutomationResult.model_validate(data)

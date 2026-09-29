@@ -152,6 +152,25 @@ class AutomationResult(BaseModel):
     open_questions: list[str]
 
 
+class LocatorFix(BaseModel):
+    """A new locator for one key that already exists in the page object file."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    key: str
+    strategy: Literal["role", "label", "placeholder", "text", "test_id", "css"]
+    role: str
+    value: str
+    confident: bool
+    reason: str
+
+
+class HealingResult(BaseModel):
+    verdict: Literal["fixed", "element_missing", "behaviour_changed", "not_a_locator_problem"]
+    fixes: list[LocatorFix]
+    explanation: str
+
+
 _CLOSING_DATA_TAG = re.compile(r"</(page|test_case)", re.IGNORECASE)
 
 

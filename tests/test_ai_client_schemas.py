@@ -9,6 +9,7 @@ from core.ai_client import (
     ColumnMappingResult,
     CoverageGap,
     DuplicateGroup,
+    HealingResult,
     ReviewResult,
 )
 
@@ -222,3 +223,38 @@ def test_automation_result_requires_every_step_field():
 
     with pytest.raises(pydantic.ValidationError):
         AutomationResult.model_validate(data)
+
+
+# ---------- HealingResult ----------
+
+VALID_HEALING = {
+    "verdict": "fixed",
+    "fixes": [
+        {"key": "submitButton", "strategy": "role", "role": "button", "value": "Log in",
+         "confident": True, "reason": "Button text changed"}
+    ],
+    "explanation": "The sign-in button was renamed.",
+}
+
+
+def test_healing_result_accepts_valid_input():
+    result = HealingResult.model_validate(VALID_HEALING)
+
+    assert result.verdict == "fixed"
+    assert result.fixes[0].key == "submitButton"
+
+
+def test_healing_result_rejects_unknown_verdict():
+    data = copy.deepcopy(VALID_HEALING)
+    data["verdict"] = "maybe"
+
+    with pytest.raises(pydantic.ValidationError):
+        HealingResult.model_validate(data)
+
+
+def test_healing_result_requires_a_reason_per_fix():
+    data = copy.deepcopy(VALID_HEALING)
+    del data["fixes"][0]["reason"]
+
+    with pytest.raises(pydantic.ValidationError):
+        HealingResult.model_validate(data)

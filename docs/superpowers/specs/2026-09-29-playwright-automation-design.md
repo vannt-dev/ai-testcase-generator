@@ -52,13 +52,14 @@ locator model simple so that step 2 can reuse it.
 
 ## Data model
 
-Added to `core/ai_client.py` next to the existing models:
+Added to `core/ai_client.py` next to the existing models. All fields are
+required; the AI sends empty strings for unused fields.
 
 ```python
 class Locator(BaseModel):
     key: str            # camelCase, unique within the page, e.g. "emailInput"
     strategy: Literal["role", "label", "placeholder", "text", "test_id", "css"]
-    role: str = ""      # ARIA role, only when strategy == "role"
+    role: str           # ARIA role, only when strategy == "role"
     value: str          # accessible name / label / text / test id / css selector
     confident: bool     # False -> "// TODO verify locator" in the output
 
@@ -71,9 +72,9 @@ class Step(BaseModel):
     action: Literal["goto", "click", "fill", "select", "check", "uncheck",
                     "press", "expect_visible", "expect_hidden",
                     "expect_text", "expect_value", "expect_url", "todo"]
-    page: str = ""      # PageObject.name
-    locator: str = ""   # Locator.key
-    value: str = ""     # input text, expected text/url, key name
+    page: str           # PageObject.name
+    locator: str        # Locator.key
+    value: str          # input text, expected text/url, key name
     source: str         # the original step sentence, rendered as a comment
 
 class AutomatedTest(BaseModel):
@@ -226,8 +227,10 @@ Rendering rules:
 4. A test case table with a selection checkbox. Only `Web`/`All` cases are
    shown, and the rest are counted in a caption. Rows from an upload without a
    platform column count as web.
-5. Base URL text input and a `st.data_editor` of pages (name, path,
-   snapshot). A caption explains how to get an ARIA snapshot and warns that
+5. Base URL text input, then a number-of-pages input (0–10) with name, path
+   and snapshot fields per page (blank pages are ignored; a 50k-character
+   snapshot does not fit a table cell).
+   A caption explains how to get an ARIA snapshot and warns that
    pasted HTML is sent to Anthropic, so tokens and personal data should be removed first.
 6. The Generate button is disabled, with the reason shown, when: nothing is
    selected; more than 10 selected; the Base URL is not `http(s)://`; there

@@ -23,17 +23,18 @@ one config file, no code changes needed.
 - Reviews either the current generated set or an uploaded `.xlsx`/`.csv`
 - Suggests and lets the user confirm column mappings for external files
 - Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
+- Turns web test cases into a runnable Playwright + TypeScript project (page objects, specs, zip download)
 
 ## Architecture
 
 ```
-Generator, Reviewer or Bug Reporter workflow
+Generator, Reviewer, Bug Reporter or Automation workflow
             +
 Shared Core Engine + task-specific prompt
             +
 Project Config (YAML)
             =
-Project-aware test cases, coverage reports and bug reports
+Project-aware test cases, coverage reports, bug reports and Playwright tests
 ```
 
 ## Directory structure
@@ -43,7 +44,8 @@ ai-testcase-generator/
 ├── app.py                       # Generator page and session history
 ├── pages/
 │   ├── 1_Reviewer.py            # Coverage review, gap generation, merge/export
-│   └── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
+│   ├── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
+│   └── 3_Automation.py          # Playwright project from web test cases
 ├── core/
 │   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
 │   ├── file_import.py            # Safely parses uploaded .xlsx/.csv files
@@ -52,7 +54,10 @@ ai-testcase-generator/
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   ├── excel_exporter.py         # Exports results to .xlsx
 │   ├── bug_exporters.py          # Bug report Markdown/Excel export
-│   └── bug_batch.py              # Bug reports from the failed rows of a test run
+│   ├── bug_batch.py              # Bug reports from the failed rows of a test run
+│   ├── automation_inputs.py      # Checks Automation page input before the AI call
+│   ├── automation_validate.py    # Cleans AI automation output (names, references)
+│   └── playwright_renderer.py    # Renders page objects, specs and the project zip
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
 │   └── example_ecommerce.yaml    # Sample config
@@ -61,9 +66,11 @@ ai-testcase-generator/
 │   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
 │   ├── column_mapping_system_prompt.md
 │   ├── bug_report_system_prompt.md # Writes one bug report from notes
-│   └── run_column_mapping_system_prompt.md
+│   ├── run_column_mapping_system_prompt.md
+│   └── automation_system_prompt.md # Turns web test cases into Playwright steps
+├── scripts/render_automation_fixture.py # Renders the fixture project CI type-checks
 ├── tests/                        # pytest (core logic + all Streamlit pages)
-├── .github/workflows/tests.yml   # CI: runs pytest on every push/PR
+├── .github/workflows/tests.yml   # CI: pytest, plus tsc on a generated Playwright project
 └── docs/
     └── how-to-add-new-project.md
 ```
@@ -146,6 +153,22 @@ shows) and covers the core defect report fields of ISTQB and ISO/IEC/IEEE
 screenshots and recordings is attached in the tracker, which also assigns the
 ID, date, reporter and status.
 
+### Generate Playwright tests
+
+1. Open **Automation** in Streamlit's page navigation
+2. Use the test cases from this session or upload a `.xlsx`/`.csv` (test ID,
+   title, steps and expected result are required columns); only Web/All
+   cases are listed, and up to 10 are automated per run
+3. Enter the Base URL of the app under test and, optionally, each page's name,
+   path and HTML or ARIA snapshot — with a snapshot the AI picks locators that
+   exist; without one it infers them and marks each for review
+4. Click **Generate Playwright project**, preview the files and download the zip
+5. In the unzipped folder: `npm install`, `npx playwright install`,
+   `cp .env.example .env` (fill in passwords and tokens), then `npm test`
+
+Steps the AI cannot express become `test.fixme` with a TODO, and the
+project's README lists every test and locator that still needs a human.
+
 ## Running tests
 
 ```bash
@@ -181,6 +204,11 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   Ambiguous headers, malformed rows, and lazy Excel parsing errors produce
   import errors. Exported text, including generated/editor values and summary
   questions, stays literal even when it begins with a spreadsheet formula prefix.
+- Page HTML/ARIA snapshots pasted on the Automation page are sent to
+  Anthropic with the test cases; remove tokens and personal data first. The
+  Base URL stays local: it is written to `playwright.config.ts` only. The AI is
+  told to write passwords and tokens as `${ENV:NAME}`, read from `.env`; still
+  review the generated test data before sharing the project.
 
 ## Adding your own project
 
@@ -199,7 +227,8 @@ cp configs/_template.yaml configs/your_project_name.yaml
 - [x] Phase 2: Test Case Reviewer / Coverage Checker
 - [x] Phase 3, step 1: Bug Report Writer with tracker-neutral Markdown/Excel export
 - [x] Phase 3, step 2: Bug reports from the failed rows of an executed test run
-- [ ] Phase 4: Expand into automation (self-healing scripts, generated test code)
+- [x] Phase 4, step 1: Playwright + TypeScript project generated from web test cases
+- [ ] Phase 4, step 2: Self-healing — repair locators from a failing test's error and fresh HTML
 
 ## Notes
 

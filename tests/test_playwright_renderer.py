@@ -1,12 +1,20 @@
 """Unit tests for core/playwright_renderer.py."""
+import io
+import json
+import zipfile
+
 import pytest
 
 from core.playwright_renderer import (
+    build_zip,
     comment,
     locator_expr,
+    project_root,
+    render_project,
     render_page,
     render_spec,
     slug,
+    summarize,
     ts_string,
     value_expr,
 )
@@ -146,3 +154,118 @@ def test_tests_are_separated_by_a_blank_line_and_keep_order():
 
     assert spec.index("TC_B") < spec.index("TC_A")
     assert "});\n\ntest.fixme(" in spec
+
+
+def _result(tests, pages=None, questions=None):
+    return {"pages": pages if pages is not None else [LOGIN], "tests": tests, "open_questions": questions or []}
+
+
+ONE_TEST = [{"test_id": "TC_1", "title": "Login", "module": "Đăng nhập", "steps": [
+    _step("goto", "LoginPage"),
+    _step("fill", "LoginPage", "emailInput", "${ENV:USER_EMAIL}"),
+]}]
+
+
+def test_project_root():
+    assert project_root("Demo Shop") == "demo-shop-playwright"
+    assert project_root("!!!") == "project-playwright"
+
+
+def test_render_project_file_set():
+    files = render_project(_result(ONE_TEST), "Demo Shop", "https://staging.example.com")
+
+    assert sorted(files) == [
+        ".env.example", ".gitignore", "README.md", "package.json",
+        "pages/LoginPage.ts", "playwright.config.ts", "tests/dang-nhap.spec.ts", "tsconfig.json",
+    ]
+
+
+def test_module_files_use_ascii_slugs():
+    tests = [
+        {**ONE_TEST[0], "test_id": "TC_1", "module": "Đăng nhập"},
+        {**ONE_TEST[0], "test_id": "TC_2", "module": ""},
+        {**ONE_TEST[0], "test_id": "TC_3", "module": "dang nhap"},
+    ]
+    files = render_project(_result(tests), "Demo", "https://x.test")
+
+    assert "TC_1" in files["tests/dang-nhap.spec.ts"] and "TC_3" in files["tests/dang-nhap.spec.ts"]
+    assert "TC_2" in files["tests/general.spec.ts"]
+
+
+def test_package_json_pins_versions_and_scripts():
+    package = json.loads(render_project(_result(ONE_TEST), "Demo Shop", "https://x.test")["package.json"])
+
+    assert package["name"] == "demo-shop-playwright"
+    assert package["private"] is True
+    assert package["devDependencies"] == {
+        "@playwright/test": "1.63.0", "@types/node": "22.20.4", "typescript": "5.9.3",
+    }
+    assert package["scripts"]["typecheck"] == "tsc --noEmit"
+    assert package["scripts"]["test"] == "playwright test"
+    assert package["engines"] == {"node": ">=20.12"}
+
+
+def test_config_uses_base_url_and_loads_env_file():
+    config = render_project(_result(ONE_TEST), "Demo", 'https://x.test/"a')["playwright.config.ts"]
+
+    assert "baseURL: process.env.BASE_URL ?? \"https://x.test/\\\"a\"," in config
+    assert "if (existsSync('.env')) process.loadEnvFile('.env');" in config
+
+
+def test_env_example_lists_base_url_and_env_names():
+    tests = [{"test_id": "TC_1", "title": "t", "module": "", "steps": [
+        _step("fill", "LoginPage", "emailInput", "${ENV:USER_EMAIL}"),
+        _step("fill", "LoginPage", "emailInput", "${ENV:A_TOKEN}"),
+        _step("fill", "LoginPage", "emailInput", "${ENV:USER_EMAIL}"),
+    ]}]
+    env = render_project(_result(tests), "Demo", "https://x.test\nEVIL=1")[".env.example"]
+
+    assert env == "BASE_URL=https://x.test EVIL=1\nA_TOKEN=\nUSER_EMAIL=\n"
+
+
+def test_readme_lists_todos_and_questions():
+    tests = [{"test_id": "TC_2", "title": "Needs work", "module": "", "steps": [_step("todo")]}]
+    readme = render_project(_result(tests, questions=["Which account?"]), "Demo Shop", "https://x.test")["README.md"]
+
+    assert readme.startswith("# Demo Shop: Playwright tests\n")
+    assert "npm install" in readme and "npx playwright install" in readme
+    assert "- `TC_2` Needs work" in readme
+    assert "- `LoginPage.submitButton`" in readme
+    assert "- Which account?" in readme
+
+
+def test_readme_says_none_when_nothing_to_do():
+    page = {**LOGIN, "locators": [_loc("emailInput", "label", "Email")]}
+    readme = render_project(_result(ONE_TEST, pages=[page]), "Demo", "https://x.test")["README.md"]
+
+    assert readme.count("None.") == 3
+
+
+def test_summarize():
+    tests = ONE_TEST + [{"test_id": "TC_2", "title": "t", "module": "", "steps": [_step("todo")]}]
+
+    assert summarize(_result(tests)) == {"tests": 2, "fixme": 1, "unverified_locators": 1}
+
+
+def test_zip_is_deterministic_and_rooted():
+    files = render_project(_result(ONE_TEST), "Demo", "https://x.test")
+    first = build_zip(files, "demo-playwright")
+
+    assert first == build_zip(dict(reversed(list(files.items()))), "demo-playwright")
+    with zipfile.ZipFile(io.BytesIO(first)) as archive:
+        names = archive.namelist()
+        assert names == sorted(names)
+        assert all(name.startswith("demo-playwright/") for name in names)
+        assert archive.getinfo("demo-playwright/package.json").date_time == (1980, 1, 1, 0, 0, 0)
+        assert archive.read("demo-playwright/pages/LoginPage.ts").decode("utf-8") == files["pages/LoginPage.ts"]
+
+
+@pytest.mark.parametrize("bad_path", ["../evil.ts", "/abs.ts", "tests/../../x", "a\b.ts", ""])
+def test_zip_rejects_unsafe_paths(bad_path):
+    with pytest.raises(ValueError):
+        build_zip({bad_path: "x"}, "demo-playwright")
+
+
+def test_zip_rejects_unsafe_root():
+    with pytest.raises(ValueError):
+        build_zip({"a.ts": "x"}, "../demo")

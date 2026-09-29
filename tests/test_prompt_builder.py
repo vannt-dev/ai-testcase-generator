@@ -3,6 +3,7 @@ from pathlib import Path
 from core.prompt_builder import (
     AUTOMATION_PROMPT_PATH,
     BUG_REPORT_PROMPT_PATH,
+    LOCATOR_HEALING_PROMPT_PATH,
     ProjectConfigError,
     build_system_prompt,
     estimate_prompt_size_warning,
@@ -165,3 +166,15 @@ def test_automation_prompt_includes_playwright_rules_and_project_config():
     assert "Playwright" in prompt
     assert "${ENV:NAME}" in prompt
     assert "Cart holds at most 10 items" in prompt
+
+
+def test_locator_healing_prompt_includes_verdicts_and_project_config():
+    config = {
+        "project_name": "Demo", "platform": ["web"], "test_id_format": "TC_{MODULE}_{NUMBER}",
+        "test_types_required": ["positive"], "domain_rules": ["Checkout needs login"],
+        "glossary": {}, "notes": "",
+    }
+    prompt = build_system_prompt(config, base_prompt_path=LOCATOR_HEALING_PROMPT_PATH)
+
+    assert "behaviour_changed" in prompt
+    assert "Checkout needs login" in prompt

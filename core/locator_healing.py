@@ -3,7 +3,11 @@ Find the locators in a Playwright page object file and patch only the ones
 the AI fixed. Everything else in the file is kept byte for byte, so files a
 tester edited by hand survive healing.
 """
+import difflib
 import re
+
+from core.automation_validate import normalize_strategy
+from core.playwright_renderer import comment, locator_expr
 
 MAX_FILE_BYTES = 100_000
 MAX_ERROR_CHARS = 20_000
@@ -100,3 +104,64 @@ def healing_problems(locators: list[dict] | None, error_text: str, snapshot: str
             "paste only the relevant part of the page."
         )
     return problems
+
+
+GENERATED_TODO = "// TODO verify locator"
+
+
+def validate_fixes(fixes: list[dict], locators: list[dict]) -> tuple[list[dict], list[str]]:
+    current = {loc["key"]: loc["expression"] for loc in locators}
+    kept: list[dict] = []
+    warnings: list[str] = []
+    seen: set[str] = set()
+    for raw in fixes:
+        key = str(raw.get("key") or "").strip()
+        if key not in current:
+            warnings.append(f"The AI proposed a fix for '{key}', which is not a locator in this file.")
+            continue
+        if key in seen:
+            warnings.append(f"Second fix for '{key}' ignored; the first is kept.")
+            continue
+        seen.add(key)
+        fix = {
+            "key": key,
+            "strategy": str(raw.get("strategy") or ""),
+            "role": str(raw.get("role") or "").strip().lower(),
+            "value": str(raw.get("value") or ""),
+            "confident": bool(raw.get("confident")),
+            "reason": comment(raw.get("reason") or ""),
+        }
+        normalize_strategy(fix, key, warnings)
+        fix["expression"] = locator_expr(fix)
+        if fix["expression"] == current[key]:
+            warnings.append(f"{key}: the proposed locator is the same as the current one.")
+            continue
+        kept.append(fix)
+    return kept, warnings
+
+
+def apply_fixes(source: str, locators: list[dict], fixes: list[dict]) -> str:
+    if not fixes:
+        return source
+    by_key = {loc["key"]: loc for loc in locators}
+    lines = _split_lines(source)
+    # Bottom-up, so inserting comment lines never shifts a line still to patch.
+    for fix in sorted(fixes, key=lambda f: by_key[f["key"]]["line"], reverse=True):
+        loc = by_key[fix["key"]]
+        index = loc["line"]
+        line = lines[index]
+        indent = line[: len(line) - len(line.lstrip())]
+        lines[index] = line[: loc["start"]] + fix["expression"] + line[loc["end"]:]
+        notes = [f"{indent}// healed: {fix['reason'] or 'locator updated'}"]
+        if not fix["confident"]:
+            notes.append(f"{indent}// TODO verify locator: not confirmed by the new snapshot")
+        # The generated "TODO verify locator" note no longer applies to the new locator.
+        replace_from = index - 1 if index > 0 and lines[index - 1].strip().startswith(GENERATED_TODO) else index
+        lines[replace_from:index] = notes
+    return _newline(source).join(lines)
+
+
+def unified_diff(old: str, new: str, file_name: str) -> str:
+    return "\n".join(difflib.unified_diff(
+        _split_lines(old), _split_lines(new), f"a/{file_name}", f"b/{file_name}", lineterm="",
+    ))

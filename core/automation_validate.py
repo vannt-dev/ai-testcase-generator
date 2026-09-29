@@ -145,6 +145,19 @@ def _todo(source: str) -> dict:
     return {"action": "todo", "page": "", "locator": "", "value": "", "source": source}
 
 
+def normalize_strategy(locator: dict, label: str, warnings: list[str]) -> None:
+    """Make a locator's strategy and role ones Playwright's types accept (in place)."""
+    if locator["strategy"] not in STRATEGIES:
+        warnings.append(f"{label}: unknown strategy '{locator['strategy']}'; using a text locator.")
+        locator.update(strategy="text", confident=False)
+    if locator["strategy"] == "role" and locator["role"] not in ARIA_ROLES:
+        if locator["role"]:
+            warnings.append(f"{label}: unknown ARIA role '{locator['role']}'; using a text locator.")
+        locator.update(strategy="text", confident=False)
+    if locator["strategy"] != "role":
+        locator["role"] = ""
+
+
 def validate_automation(result: dict, modules: dict[str, str]) -> tuple[dict, list[str]]:
     warnings: list[str] = []
     pages, lookup = _clean_pages(result.get("pages") or [], warnings)
@@ -193,15 +206,7 @@ def _clean_locators(page_name: str, raw_locators: list[dict], warnings: list[str
             "value": _text(raw.get("value")),
             "confident": bool(raw.get("confident")),
         }
-        if locator["strategy"] not in STRATEGIES:
-            warnings.append(f"{page_name}.{key}: unknown strategy '{locator['strategy']}'; using a text locator.")
-            locator.update(strategy="text", confident=False)
-        if locator["strategy"] == "role" and locator["role"] not in ARIA_ROLES:
-            if locator["role"]:
-                warnings.append(f"{page_name}.{key}: unknown ARIA role '{locator['role']}'; using a text locator.")
-            locator.update(strategy="text", confident=False)
-        if locator["strategy"] != "role":
-            locator["role"] = ""
+        normalize_strategy(locator, f"{page_name}.{key}", warnings)
         locators.append(locator)
         keys.add(raw_key, key, key)
     return locators, keys

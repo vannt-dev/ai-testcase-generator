@@ -1,0 +1,10 @@
+{
+  "file": "pages/LoginPage.ts",
+  "fixes": [
+    {"key": "submitButton", "strategy": "role", "role": "button", "value": "Log in", "confident": true,
+     "reason": "Button text changed from 'Sign in' to 'Log in'"},
+    {"key": "emailInput", "strategy": "test_id", "role": "", "value": "login-email`${x}\"", "confident": false,
+     "reason": "Label */ removed\nfrom the form"},
+    {"key": "ghost", "strategy": "text", "role": "", "value": "x", "confident": true, "reason": "not in the file"}
+  ]
+}

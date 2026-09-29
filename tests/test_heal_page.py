@@ -150,3 +150,12 @@ def test_editing_the_error_clears_the_result(monkeypatch):
     at.text_area(key="heal_error").set_value("Error: something else").run(timeout=30)
 
     assert "healing_result" not in at.session_state
+
+
+def test_a_fix_that_drops_a_chain_starts_unticked(monkeypatch):
+    at = _app(monkeypatch)
+    _fill(at, source=SOURCE.replace('page.getByLabel("Email")', 'page.getByLabel("Email").first()'))
+    _heal(at)
+
+    assert [box.value for box in at.checkbox] == [True, False]
+    assert any("chained calls or options" in md.value for md in at.markdown)

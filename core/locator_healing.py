@@ -15,7 +15,10 @@ MAX_SNAPSHOT_CHARS = 50_000
 
 # `this.<key> = page` at the start of a line; the expression is scanned by hand
 # so a ';' or '//' inside a string literal does not end it.
-_ASSIGNMENT = re.compile(r"^\s*this\.([A-Za-z_$][\w$]*)\s*=\s*(?=page\b)")
+# `page` must be followed by a dot, or end the line (a call continued below), so
+# `this.page = page;` in a hand-written constructor is not taken for a locator.
+_ASSIGNMENT = re.compile(r"^\s*this\.([A-Za-z_$][\w$]*)\s*=\s*(?=page\s*(?:\.|$))")
+_CALL = re.compile(r"^page\s*\.\s*(\w+)\s*\(")
 
 
 class HealingInputError(ValueError):
@@ -109,6 +112,54 @@ def healing_problems(locators: list[dict] | None, error_text: str, snapshot: str
 GENERATED_TODO = "// TODO verify locator"
 
 
+def _code_only(text: str) -> str:
+    """The text with string literal contents blanked, so brackets and colons
+    inside strings are not mistaken for code. Same length as the input."""
+    out: list[str] = []
+    quote = None
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == "\\":
+                out.append(" " * len(text[index:index + 2]))
+                index += 2
+                continue
+            out.append(char if char == quote else " ")
+            if char == quote:
+                quote = None
+        else:
+            if char in "'\"`":
+                quote = char
+            out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _drops_detail(expression: str) -> bool:
+    """True when replacing the expression with one getBy/locator call would lose
+    something: a chain (.nth(), .first(), .filter()) or options other than a
+    role's accessible name."""
+    code = _code_only(expression)
+    call = _CALL.match(code)
+    if not call:
+        return True
+    depth = 0
+    for close in range(call.end() - 1, len(code)):
+        if code[close] == "(":
+            depth += 1
+        elif code[close] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        return True
+    if code[close + 1:].strip():
+        return True
+    keys = set(re.findall(r"([A-Za-z_$][\w$]*)\s*:", code[call.end():close]))
+    return bool(keys) and (call.group(1) != "getByRole" or keys != {"name"})
+
+
 def validate_fixes(fixes: list[dict], locators: list[dict]) -> tuple[list[dict], list[str]]:
     current = {loc["key"]: loc["expression"] for loc in locators}
     kept: list[dict] = []
@@ -136,6 +187,12 @@ def validate_fixes(fixes: list[dict], locators: list[dict]) -> tuple[list[dict],
         if fix["expression"] == current[key]:
             warnings.append(f"{key}: the proposed locator is the same as the current one.")
             continue
+        fix["drops_detail"] = _drops_detail(current[key])
+        if fix["drops_detail"]:
+            warnings.append(
+                f"{key}: the current locator has chained calls or options ({current[key]}) that the fix "
+                "would drop; it is unticked, so check it before applying."
+            )
         kept.append(fix)
     return kept, warnings
 

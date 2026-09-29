@@ -250,3 +250,36 @@ def test_unified_diff():
     assert diff.startswith("--- a/pages/LoginPage.ts\n+++ b/pages/LoginPage.ts\n@@")
     assert '\n-    this.submitButton = page.getByRole("button", { name: "Sign in" });' in diff
     assert '\n+    this.submitButton = page.getByRole("button", { name: "Log in" });' in diff
+
+
+def test_page_assignment_is_not_a_locator():
+    source = "  constructor(page: Page) {\n    this.page = page;\n    this.btn = page.getByText('x');\n  }\n"
+    locators, skipped = parse_locators(source)
+
+    assert _summary(locators) == [("btn", "page.getByText('x')", 2)]
+    assert skipped == []
+
+
+def test_fix_that_would_drop_a_chain_or_options_is_flagged():
+    source = (
+        "    this.row = page.getByRole('row').nth(2);\n"
+        "    this.exact = page.getByText('B', { exact: true });\n"
+        "    this.named = page.getByRole('button', { name: 'Go' });\n"
+        "    this.plain = page.getByLabel('Email');\n"
+    )
+    locators, _ = parse_locators(source)
+    fixes = [
+        _fix(key="row", strategy="text", role="", value="Total"),
+        _fix(key="exact", strategy="text", role="", value="C"),
+        _fix(key="named", value="Start"),
+        _fix(key="plain", strategy="label", role="", value="Work email"),
+    ]
+    kept, warnings = validate_fixes(fixes, locators)
+
+    assert [fix["drops_detail"] for fix in kept] == [True, True, False, False]
+    assert warnings == [
+        "row: the current locator has chained calls or options (page.getByRole('row').nth(2)) that the fix "
+        "would drop; it is unticked, so check it before applying.",
+        "exact: the current locator has chained calls or options (page.getByText('B', { exact: true })) that "
+        "the fix would drop; it is unticked, so check it before applying.",
+    ]

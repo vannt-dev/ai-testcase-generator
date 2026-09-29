@@ -128,7 +128,8 @@ def _render_result(stored: dict, source: str, file_name: str, locators: list[dic
     for fix in stored["fixes"]:
         # The signature in the key resets the checkboxes for every new result.
         checkbox_key = f"heal_fix_{stored['signature'][:12]}_{fix['key']}"
-        if st.checkbox(f"Apply the fix to `{fix['key']}`", value=True, key=checkbox_key):
+        # A fix that would drop a chain or options starts unticked.
+        if st.checkbox(f"Apply the fix to `{fix['key']}`", value=not fix["drops_detail"], key=checkbox_key):
             chosen.append(fix)
         st.code(f"- {current[fix['key']]}\n+ {fix['expression']}", language="diff")
         st.caption(fix["reason"] + ("" if fix["confident"] else " · not confirmed by the snapshot"))

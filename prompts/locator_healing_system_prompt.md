@@ -33,4 +33,8 @@ MANDATORY RULES:
 1. Never change a locator to make a wrong expected result pass.
 2. Leave working locators alone: return fixes only for broken ones.
 3. When unsure, return no fix for that key and explain why.
-4. Follow the project's domain rules and glossary below.
+4. Each fix replaces the WHOLE current expression with one getBy…/locator
+   call. If the element can only be found with a chain (.nth(), .first(),
+   .filter()) or with options other than an accessible name, return no fix
+   for that key and say so in the explanation.
+5. Follow the project's domain rules and glossary below.

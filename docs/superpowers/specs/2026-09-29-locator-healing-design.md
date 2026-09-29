@@ -84,6 +84,12 @@ returns the kept fixes (each with the rendered `expression` added) and warnings:
 - A fix whose rendered expression equals the current expression is dropped
   with a warning ("no change").
 - `reason` is reduced to one line for the comment.
+- When the current expression has something the fix would drop — a chain
+  such as `.nth(2)`, `.first()` or `.filter(...)`, or options other than a
+  role's accessible name, such as `{ exact: true }` — the fix is kept but
+  flagged (`drops_detail`) with a warning, and its checkbox starts unticked.
+  The prompt tells the AI to return no fix when one getBy/locator call is
+  not enough.
 
 ## Patching
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from core.prompt_builder import (
+    AUTOMATION_PROMPT_PATH,
     BUG_REPORT_PROMPT_PATH,
     ProjectConfigError,
     build_system_prompt,
@@ -151,3 +152,16 @@ def test_run_column_mapping_prompt_lists_run_fields():
 
     for field in ("status", "actual_result", "comment", "test_id", "expected_result"):
         assert field in prompt
+
+
+def test_automation_prompt_includes_playwright_rules_and_project_config():
+    config = {
+        "project_name": "Demo", "platform": ["web"], "test_id_format": "TC_{MODULE}_{NUMBER}",
+        "test_types_required": ["positive"], "domain_rules": ["Cart holds at most 10 items"],
+        "glossary": {}, "notes": "",
+    }
+    prompt = build_system_prompt(config, base_prompt_path=AUTOMATION_PROMPT_PATH)
+
+    assert "Playwright" in prompt
+    assert "${ENV:NAME}" in prompt
+    assert "Cart holds at most 10 items" in prompt

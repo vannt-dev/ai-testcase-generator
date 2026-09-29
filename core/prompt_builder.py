@@ -13,6 +13,7 @@ REVIEWER_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "reviewer_syst
 COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "column_mapping_system_prompt.md"
 BUG_REPORT_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "bug_report_system_prompt.md"
 RUN_COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "run_column_mapping_system_prompt.md"
+AUTOMATION_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "automation_system_prompt.md"
 
 # Rough token estimate ~ character count / 4 (common rule of thumb for
 # English/Vietnamese text). Threshold used to warn when domain_rules/

@@ -4,6 +4,7 @@ the AI fixed. Everything else in the file is kept byte for byte, so files a
 tester edited by hand survive healing.
 """
 import difflib
+import json
 import re
 
 from core.automation_validate import normalize_strategy
@@ -25,13 +26,49 @@ class HealingInputError(ValueError):
     """A problem with the uploaded file, shown to the user as is."""
 
 
-def _newline(source: str) -> str:
-    return "\r\n" if "\r\n" in source else "\n"
+def _split(source: str) -> tuple[list[str], list[str]]:
+    """Lines and the terminator after each ("\\r\\n", "\\n"; none after the last),
+    so a file with mixed line endings is rebuilt exactly. Not str.splitlines():
+    it also splits on U+2028 and friends inside string literals."""
+    parts = re.split(r"(\r?\n)", source)
+    return parts[0::2], parts[1::2]
 
 
 def _split_lines(source: str) -> list[str]:
-    # Not str.splitlines(): it also splits on U+2028 and friends inside strings.
-    return source.split(_newline(source))
+    return _split(source)[0]
+
+
+def _join(lines: list[str], terminators: list[str]) -> str:
+    return "".join(line + end for line, end in zip(lines, terminators + [""]))
+
+
+def _block_comment_after(line: str, in_block: bool) -> bool:
+    """Whether a /* */ comment is still open at the end of the line."""
+    quote = None
+    index = 0
+    while index < len(line):
+        pair = line[index:index + 2]
+        if in_block:
+            if pair == "*/":
+                in_block = False
+                index += 2
+                continue
+        elif quote:
+            if line[index] == "\\":
+                index += 2
+                continue
+            if line[index] == quote:
+                quote = None
+        elif pair == "//":
+            break
+        elif pair == "/*":
+            in_block = True
+            index += 2
+            continue
+        elif line[index] in "'\"`":
+            quote = line[index]
+        index += 1
+    return in_block
 
 
 def read_page_object(data: bytes) -> str:
@@ -69,16 +106,20 @@ def parse_locators(source: str) -> tuple[list[dict], list[int]]:
     locators: list[dict] = []
     skipped: list[int] = []
     seen: set[str] = set()
+    in_block = False
     for index, line in enumerate(_split_lines(source)):
-        match = _ASSIGNMENT.match(line)
+        starts_in_block = in_block
+        in_block = _block_comment_after(line, in_block)
+        match = None if starts_in_block else _ASSIGNMENT.match(line)
         if not match:
             continue
         key, start = match.group(1), match.end()
         end = _statement_end(line, start)
-        if end is None or key in seen:
+        expression = line[start:end].rstrip() if end is not None else ""
+        # A '/' outside strings is a regex literal the scanner cannot follow.
+        if end is None or key in seen or "/" in _code_only(expression):
             skipped.append(index)
             continue
-        expression = line[start:end].rstrip()
         seen.add(key)
         locators.append({
             "key": key, "expression": expression, "line": index,
@@ -109,7 +150,23 @@ def healing_problems(locators: list[dict] | None, error_text: str, snapshot: str
     return problems
 
 
-GENERATED_TODO = "// TODO verify locator"
+# Comment lines this app writes above a locator; any other comment is the tester's and stays.
+GENERATED_NOTES = (
+    "// TODO verify locator: not confirmed by an HTML/ARIA snapshot",
+    "// TODO verify locator: not confirmed by the new snapshot",
+)
+HEALED_NOTE = "// healed:"
+_SIMPLE_SINGLE_QUOTED = re.compile(r"'([^'\"\\]*)'")
+
+
+def _is_generated_note(line: str) -> bool:
+    text = line.strip()
+    return text in GENERATED_NOTES or text.startswith(HEALED_NOTE)
+
+
+def _same_quotes(expression: str) -> str:
+    """'Email' and "Email" render the same locator; compare them as equal."""
+    return _SIMPLE_SINGLE_QUOTED.sub(lambda m: json.dumps(m.group(1), ensure_ascii=False), expression)
 
 
 def _code_only(text: str) -> str:
@@ -184,7 +241,7 @@ def validate_fixes(fixes: list[dict], locators: list[dict]) -> tuple[list[dict],
         }
         normalize_strategy(fix, key, warnings)
         fix["expression"] = locator_expr(fix)
-        if fix["expression"] == current[key]:
+        if fix["expression"] == _same_quotes(current[key]):
             warnings.append(f"{key}: the proposed locator is the same as the current one.")
             continue
         fix["drops_detail"] = _drops_detail(current[key])
@@ -201,7 +258,7 @@ def apply_fixes(source: str, locators: list[dict], fixes: list[dict]) -> str:
     if not fixes:
         return source
     by_key = {loc["key"]: loc for loc in locators}
-    lines = _split_lines(source)
+    lines, terminators = _split(source)
     # Bottom-up, so inserting comment lines never shifts a line still to patch.
     for fix in sorted(fixes, key=lambda f: by_key[f["key"]]["line"], reverse=True):
         loc = by_key[fix["key"]]
@@ -209,13 +266,21 @@ def apply_fixes(source: str, locators: list[dict], fixes: list[dict]) -> str:
         line = lines[index]
         indent = line[: len(line) - len(line.lstrip())]
         lines[index] = line[: loc["start"]] + fix["expression"] + line[loc["end"]:]
-        notes = [f"{indent}// healed: {fix['reason'] or 'locator updated'}"]
+        notes = [f"{indent}{HEALED_NOTE} {fix['reason'] or 'locator updated'}"]
         if not fix["confident"]:
-            notes.append(f"{indent}// TODO verify locator: not confirmed by the new snapshot")
-        # The generated "TODO verify locator" note no longer applies to the new locator.
-        replace_from = index - 1 if index > 0 and lines[index - 1].strip().startswith(GENERATED_TODO) else index
+            notes.append(f"{indent}{GENERATED_NOTES[1]}")
+        # Notes this app wrote earlier describe the old locator, so they are replaced.
+        replace_from = index
+        while replace_from > 0 and _is_generated_note(lines[replace_from - 1]):
+            replace_from -= 1
+        # A note ends like the line it describes; the last line may have no terminator.
+        if index < len(terminators):
+            note_end = terminators[index]
+        else:
+            note_end = terminators[index - 1] if index > 0 else "\n"
         lines[replace_from:index] = notes
-    return _newline(source).join(lines)
+        terminators[replace_from:index] = [note_end] * len(notes)
+    return _join(lines, terminators)
 
 
 def unified_diff(old: str, new: str, file_name: str) -> str:

@@ -98,12 +98,15 @@ def _heal(project, file_name, locators, error_text, snapshot, current_signature)
         status.update(label="Healing complete", state="complete")
 
     fixes, warnings = validate_fixes(response["healing"]["fixes"], locators)
+    # Counts runs, so healing again with the same inputs starts from fresh checkboxes.
+    st.session_state["healing_runs"] = st.session_state.get("healing_runs", 0) + 1
     st.session_state["healing_result"] = {
         "healing": response["healing"],
         "fixes": fixes,
         "warnings": warnings,
         "usage": response["usage"],
         "signature": current_signature,
+        "run": st.session_state["healing_runs"],
     }
 
 
@@ -113,12 +116,14 @@ def _render_result(stored: dict, source: str, file_name: str, locators: list[dic
     st.markdown(f"**Verdict:** `{healing['verdict']}`")
     if healing["verdict"] in VERDICT_WARNINGS:
         st.warning(VERDICT_WARNINGS[healing["verdict"]])
+    # AI-written text is shown as plain text: a prompt-injected snapshot must not
+    # be able to render links or load remote images through Markdown.
     if healing["explanation"]:
-        st.markdown(healing["explanation"])
+        st.text(healing["explanation"])
     _usage_caption(stored["usage"])
     if stored["warnings"]:
         with st.expander(f"Warnings ({len(stored['warnings'])})", expanded=True):
-            st.markdown("\n".join(f"- {warning}" for warning in stored["warnings"]))
+            st.text("\n".join(f"- {warning}" for warning in stored["warnings"]))
     if not stored["fixes"]:
         st.info("The AI proposed no locator changes.")
         return
@@ -126,13 +131,13 @@ def _render_result(stored: dict, source: str, file_name: str, locators: list[dic
     current = {loc["key"]: loc["expression"] for loc in locators}
     chosen = []
     for fix in stored["fixes"]:
-        # The signature in the key resets the checkboxes for every new result.
-        checkbox_key = f"heal_fix_{stored['signature'][:12]}_{fix['key']}"
+        # The run number in the key resets the checkboxes for every new result.
+        checkbox_key = f"heal_fix_{stored['run']}_{fix['key']}"
         # A fix that would drop a chain or options starts unticked.
         if st.checkbox(f"Apply the fix to `{fix['key']}`", value=not fix["drops_detail"], key=checkbox_key):
             chosen.append(fix)
         st.code(f"- {current[fix['key']]}\n+ {fix['expression']}", language="diff")
-        st.caption(fix["reason"] + ("" if fix["confident"] else " · not confirmed by the snapshot"))
+        st.text(fix["reason"] + ("" if fix["confident"] else " · not confirmed by the snapshot"))
 
     if not chosen:
         st.info("No fix selected.")
@@ -170,9 +175,12 @@ if uploaded is not None:
                 [{"locator": loc["key"], "current expression": loc["expression"]} for loc in locators],
                 hide_index=True,
             )
+        else:
+            st.error("The file has no one-line `this.<name> = page.…;` locators. Is it a page object?")
         if skipped:
             st.caption(
-                "Skipped lines (not a one-line `this.<name> = page.…;` locator, or a repeated name): "
+                "Skipped lines (not a one-line `this.<name> = page.…;` locator, a repeated name, "
+                "or a regex literal): "
                 + ", ".join(str(index + 1) for index in skipped)
             )
 

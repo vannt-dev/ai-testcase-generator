@@ -153,9 +153,8 @@ class AutomationResult(BaseModel):
 
 
 class LocatorFix(BaseModel):
-    """A new locator for one key that already exists in the page object file."""
-
-    model_config = ConfigDict(str_strip_whitespace=True)
+    """A new locator for one key that already exists in the page object file.
+    Not whitespace-stripped: `value` may need its spaces; validation strips key and role."""
 
     key: str
     strategy: Literal["role", "label", "placeholder", "text", "test_id", "css"]

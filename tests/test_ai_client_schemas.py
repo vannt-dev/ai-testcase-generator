@@ -252,6 +252,13 @@ def test_healing_result_rejects_unknown_verdict():
         HealingResult.model_validate(data)
 
 
+def test_healing_fix_value_keeps_its_spaces():
+    data = copy.deepcopy(VALID_HEALING)
+    data["fixes"][0]["value"] = " Log in "
+
+    assert HealingResult.model_validate(data).fixes[0].value == " Log in "
+
+
 def test_healing_result_requires_a_reason_per_fix():
     data = copy.deepcopy(VALID_HEALING)
     del data["fixes"][0]["reason"]

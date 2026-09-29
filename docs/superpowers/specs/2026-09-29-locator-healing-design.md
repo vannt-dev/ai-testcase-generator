@@ -45,7 +45,10 @@ healing of several files at once.
 - Each locator is returned as `{"key", "expression", "line"}`, where `line` is a 0-based index.
 - The second value lists the 0-based lines that start `this.<key> = page.` but
   do not match, for example because the expression spans several lines. The
-  UI reports them as skipped.
+  UI reports them as skipped. So is a line whose expression holds a regex
+  literal (a `/` outside strings), which the scanner cannot follow. Lines
+  inside a `/* … */` block comment are ignored, and each line keeps its own
+  terminator, so files that mix CRLF and LF parse and patch correctly.
 - If a key is assigned twice, only the first assignment counts, and the
   later line is reported as skipped.
 
@@ -99,7 +102,11 @@ returns the kept fixes (each with the rendered `expression` added) and warnings:
 - It inserts the comment `// healed: <reason>` directly above that line,
   with the same indentation. When `confident` is false it also inserts
   `// TODO verify locator: not confirmed by the new snapshot`.
-- It keeps the file's line ending (CRLF or LF), and whether the file ends
+- Notes this app wrote earlier directly above the line (`// healed: …` and the
+  two exact generated `// TODO verify locator: …` texts) are replaced, so healing
+  a file again does not stack them. Any other comment, including a tester's own
+  TODO, is kept.
+- It keeps each line's own ending (CRLF or LF), and whether the file ends
   with a trailing newline.
 - Fixes are applied from the bottom of the file up, so the recorded line
   indices stay valid.
@@ -114,7 +121,7 @@ with `a/<file>` / `b/<file>` headers.
 - The new prompt, `prompts/locator_healing_system_prompt.md`, is combined
   with the project config by `build_system_prompt`. Its rules:
   - fix only locators that the error or the snapshot shows are broken;
-  - prefer role, then label, then test id, then css;
+  - prefer role, then label, placeholder, test id, text, and css last (the same order as the Automation prompt);
   - set `confident` only when the element is in the snapshot;
   - never change a locator to make a wrong expected result pass;
   - when the element is gone, use `element_missing`;

@@ -129,7 +129,38 @@ def test_validation_warnings_are_listed(monkeypatch):
                                          "confident": True, "reason": "r"})
     _heal(at, response)
 
-    assert any("'ghost', which is not a locator in this file" in md.value for md in at.markdown)
+    assert any("'ghost', which is not a locator in this file" in md.value for md in at.text)
+
+
+def test_ai_text_is_shown_as_plain_text(monkeypatch):
+    at = _app(monkeypatch)
+    _fill(at)
+    response = copy.deepcopy(FAKE_HEALING)
+    response["healing"]["explanation"] = "Renamed ![x](https://evil.test/a.png)"
+    response["healing"]["fixes"][0]["reason"] = "[click](https://evil.test/b)"
+    _heal(at, response)
+
+    assert not any("evil.test" in md.value for md in at.markdown)
+    assert not any("evil.test" in caption.value for caption in at.caption)
+    assert any("https://evil.test/a.png" in text.value for text in at.text)
+    assert any("https://evil.test/b" in text.value for text in at.text)
+
+
+def test_healing_again_resets_the_checkboxes(monkeypatch):
+    at = _app(monkeypatch)
+    _fill(at)
+    _heal(at)
+    at.checkbox[0].uncheck().run(timeout=30)
+    _heal(at)
+
+    assert [box.value for box in at.checkbox] == [True, True]
+
+
+def test_file_without_locators_shows_an_error(monkeypatch):
+    at = _app(monkeypatch)
+    at.file_uploader(key="heal_file").upload("util.ts", b"export const a = 1;\n", "text/plain").run(timeout=30)
+
+    assert any("no one-line" in error.value for error in at.error)
 
 
 def test_new_upload_clears_the_result(monkeypatch):
@@ -158,4 +189,4 @@ def test_a_fix_that_drops_a_chain_starts_unticked(monkeypatch):
     _heal(at)
 
     assert [box.value for box in at.checkbox] == [True, False]
-    assert any("chained calls or options" in md.value for md in at.markdown)
+    assert any("chained calls or options" in md.value for md in at.text)

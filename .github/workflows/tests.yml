@@ -25,3 +25,25 @@ jobs:
 
       - name: Run tests
         run: pytest -q
+
+  automation-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Render the fixture Playwright project
+        run: python scripts/render_automation_fixture.py "$RUNNER_TEMP/playwright-fixture"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Type-check the generated TypeScript
+        working-directory: ${{ runner.temp }}/playwright-fixture
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck

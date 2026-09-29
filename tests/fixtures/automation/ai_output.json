@@ -1,0 +1,51 @@
+{
+  "project_name": "Demo Shop",
+  "base_url": "https://staging.example.com",
+  "modules": {"TC_LOGIN_001": "Đăng nhập", "TC_LOGIN_002": "Đăng nhập", "TC_HOME_001": "Home"},
+  "ai_output": {
+    "pages": [
+      {"name": "Login Page", "path": "/login", "locators": [
+        {"key": "emailInput", "strategy": "label", "role": "", "value": "Email", "confident": true},
+        {"key": "passwordInput", "strategy": "placeholder", "role": "", "value": "Password", "confident": true},
+        {"key": "submitButton", "strategy": "role", "role": "button", "value": "Sign in", "confident": false},
+        {"key": "rememberMe", "strategy": "role", "role": "checkbox", "value": "Remember me", "confident": true},
+        {"key": "errorBanner", "strategy": "test_id", "role": "", "value": "login-error", "confident": true}
+      ]},
+      {"name": "Trang chủ", "path": "/", "locators": [
+        {"key": "userMenu", "strategy": "role", "role": "btn", "value": "Account", "confident": true},
+        {"key": "welcomeText", "strategy": "text", "role": "", "value": "Welcome back, \"friend\"", "confident": true},
+        {"key": "languageSelect", "strategy": "css", "role": "", "value": "select#lang", "confident": false},
+        {"key": "searchBox", "strategy": "role", "role": "searchbox", "value": "", "confident": true}
+      ]}
+    ],
+    "tests": [
+      {"test_id": "TC_LOGIN_001", "title": "Login with valid credentials", "steps": [
+        {"action": "goto", "page": "Login Page", "locator": "", "value": "", "source": "Open the login page"},
+        {"action": "fill", "page": "Login Page", "locator": "emailInput", "value": "user@example.com", "source": "Enter a valid email"},
+        {"action": "fill", "page": "Login Page", "locator": "passwordInput", "value": "${ENV:TEST_PASSWORD}", "source": "Enter the password"},
+        {"action": "check", "page": "Login Page", "locator": "rememberMe", "value": "", "source": "Tick */ Remember me"},
+        {"action": "press", "page": "Login Page", "locator": "passwordInput", "value": "Enter", "source": "Press Enter"},
+        {"action": "expect_url", "page": "", "locator": "", "value": "/home?tab=1", "source": "The home page opens"},
+        {"action": "expect_visible", "page": "Trang chủ", "locator": "searchBox", "value": "", "source": "Search is shown"},
+        {"action": "expect_text", "page": "Trang chủ", "locator": "welcomeText", "value": "Welcome back", "source": "Line one\nline two"}
+      ]},
+      {"test_id": "TC_LOGIN_002", "title": "Wrong password shows an error", "steps": [
+        {"action": "goto", "page": "Login Page", "locator": "", "value": "", "source": "Open the login page"},
+        {"action": "fill", "page": "Login Page", "locator": "emailInput", "value": "user@example.com", "source": "Enter a valid email"},
+        {"action": "fill", "page": "Login Page", "locator": "passwordInput", "value": "wrong`${x}'pass\"", "source": "Enter a wrong password"},
+        {"action": "click", "page": "Login Page", "locator": "submitButton", "value": "", "source": "Click Sign in"},
+        {"action": "expect_visible", "page": "Login Page", "locator": "errorBanner", "value": "", "source": "An error is shown"},
+        {"action": "expect_hidden", "page": "Trang chủ", "locator": "userMenu", "value": "", "source": "The account menu is not shown"}
+      ]},
+      {"test_id": "TC_HOME_001", "title": "Change language", "steps": [
+        {"action": "goto", "page": "Trang chủ", "locator": "", "value": "", "source": "Open the home page"},
+        {"action": "select", "page": "Trang chủ", "locator": "languageSelect", "value": "vi", "source": "Choose Vietnamese"},
+        {"action": "expect_value", "page": "Trang chủ", "locator": "languageSelect", "value": "vi", "source": "Vietnamese is selected"},
+        {"action": "uncheck", "page": "Trang chủ", "locator": "notThere", "value": "", "source": "Untick the newsletter"},
+        {"action": "todo", "page": "", "locator": "", "value": "", "source": "Verify the page is translated"}
+      ]},
+      {"test_id": "TC_HOME_001", "title": "Duplicate id without steps", "steps": []}
+    ],
+    "open_questions": ["Which account should the login tests use?"]
+  }
+}

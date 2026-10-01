@@ -217,15 +217,48 @@ def _playwright_config(base_url: str) -> str:
     )
 
 
-def _env_example(base_url: str, names: list[str]) -> str:
-    return "".join(f"{line}\n" for line in [f"BASE_URL={_one_line(base_url)}"] + [f"{n}=" for n in names])
+def _env_example(base_url: str, names: list[str], api_base_url: str | None = None) -> str:
+    lines = [f"BASE_URL={_one_line(base_url)}"]
+    if api_base_url is not None:
+        lines.append(f"API_BASE_URL={_one_line(api_base_url)}")
+    return "".join(f"{line}\n" for line in lines + [f"{name}=" for name in names])
 
 
 def _bullets(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items) if items else "None."
 
 
-def _readme(project_name: str, result: dict) -> str:
+def _api_readme(api_result: dict) -> str:
+    fixme = [
+        f"`{t['test_id']}` {_one_line(t['title'])}".rstrip()
+        for t in api_result["tests"] if any(s["action"] == "todo" for s in t["steps"])
+    ]
+    unverified = [
+        f"`{t['test_id']}` step {number}: {s['method']} {_one_line(s['path'])}"
+        for t in api_result["tests"] for number, s in enumerate(t["steps"], start=1)
+        if s["action"] == "request" and not s["confident"]
+    ]
+    return (
+        "## API tests\n"
+        "\n"
+        "The tests under `tests/api` call `API_BASE_URL` from `.env`. Run only them with:\n"
+        "\n"
+        "```bash\n"
+        "npx playwright test tests/api\n"
+        "```\n"
+        "\n"
+        "### API tests marked fixme\n"
+        "\n"
+        f"{_bullets(fixme)}\n"
+        "\n"
+        "### Requests to verify\n"
+        "\n"
+        f"{_bullets(unverified)}\n"
+        "\n"
+    )
+
+
+def _readme(project_name: str, result: dict, api_result: dict | None = None) -> str:
     fixme = [
         f"`{t['test_id']}` {_one_line(t['title'])}".rstrip()
         for t in result["tests"] if any(s["action"] == "todo" for s in t["steps"])
@@ -234,6 +267,8 @@ def _readme(project_name: str, result: dict) -> str:
         f"`{p['name']}.{loc['key']}`" for p in result["pages"] for loc in p["locators"] if not loc["confident"]
     ]
     questions = [_one_line(q) for q in result["open_questions"]]
+    if api_result:
+        questions += [_one_line(q) for q in api_result["open_questions"]]
     return (
         f"# {_one_line(project_name)}: Playwright tests\n"
         "\n"
@@ -256,13 +291,21 @@ def _readme(project_name: str, result: dict) -> str:
         "\n"
         f"{_bullets(unverified)}\n"
         "\n"
-        "## Open questions\n"
+        + (_api_readme(api_result) if api_result else "")
+        + "## Open questions\n"
         "\n"
         f"{_bullets(questions)}\n"
     )
 
 
-def render_project(result: dict, project_name: str, base_url: str) -> dict[str, str]:
+def render_project(
+    result: dict, project_name: str, base_url: str, api_result: dict | None = None, api_base_url: str = "",
+) -> dict[str, str]:
+    """`api_result` (core.api_automation_validate) adds API tests to the same project."""
+    # Imported here: core.api_renderer builds on this module's string helpers.
+    from core.api_renderer import api_env_names, render_api_files
+
+    api = api_result if api_result and api_result["tests"] else None
     pages_by_name = {page["name"]: page for page in result["pages"]}
     files: dict[str, str] = {}
     for page in sorted(result["pages"], key=lambda p: p["name"]):
@@ -275,12 +318,18 @@ def render_project(result: dict, project_name: str, base_url: str) -> dict[str, 
         groups.setdefault(module, []).append(test)
     for module, tests in sorted(groups.items()):
         files[f"tests/{module}.spec.ts"] = render_spec(tests, pages_by_name)
+    names = _env_names(result)
+    if api:
+        files.update(render_api_files(api, api_base_url))
+        names = sorted(set(names) | set(api_env_names(api)))
+    # A project with API tests only has no web base URL; Playwright still wants one.
+    web_base_url = base_url or api_base_url
     files["package.json"] = _package_json(project_root(project_name))
-    files["playwright.config.ts"] = _playwright_config(base_url)
+    files["playwright.config.ts"] = _playwright_config(web_base_url)
     files["tsconfig.json"] = TSCONFIG
-    files[".env.example"] = _env_example(base_url, _env_names(result))
+    files[".env.example"] = _env_example(web_base_url, names, api_base_url if api else None)
     files[".gitignore"] = GITIGNORE
-    files["README.md"] = _readme(project_name, result)
+    files["README.md"] = _readme(project_name, result, api)
     return files
 
 

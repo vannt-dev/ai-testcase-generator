@@ -51,3 +51,13 @@ def test_build_edited_result_recalculates_summary_and_preserves_metadata():
     assert result["summary"]["by_type"]["security"] == 1
     assert result["summary"]["open_questions"] == ["Confirm timeout?"]
     assert result["usage"] == {"input_tokens": 10}
+
+
+def test_platform_options_match_the_test_case_model():
+    from typing import get_args
+
+    from core.ai_client import TestCase
+    from core.result_utils import PLATFORM_OPTIONS
+
+    assert PLATFORM_OPTIONS == ["Web", "iOS", "Android", "API", "All"]
+    assert set(PLATFORM_OPTIONS) == set(get_args(TestCase.model_fields["platform"].annotation))

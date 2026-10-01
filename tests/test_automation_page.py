@@ -34,6 +34,17 @@ FAKE_AUTOMATION = {
     "usage": {"model": "claude-sonnet-5", "input_tokens": 10, "output_tokens": 5, "estimated_cost_usd": 0.001},
 }
 
+FAKE_API_AUTOMATION = {
+    "api_automation": {
+        "tests": [{"test_id": "TC_A1", "title": "Case TC_A1", "steps": [
+            {"action": "request", "method": "GET", "path": "/orders", "headers": [], "query": [], "body": "",
+             "expect_status": 200, "checks": [], "saves": [], "confident": False, "source": "1. GET /orders"},
+        ]}],
+        "open_questions": ["Which token?"],
+    },
+    "usage": {"model": "claude-sonnet-5", "input_tokens": 20, "output_tokens": 7, "estimated_cost_usd": 0.002},
+}
+
 MAPPING = {"mapping": {
     "test_id": "ID", "module": "", "title": "Title", "precondition": "", "steps": "Steps",
     "test_data": "", "expected_result": "Expected", "priority": "", "type": "", "platform": "",
@@ -78,7 +89,7 @@ def test_non_web_cases_are_hidden_and_counted(monkeypatch):
     at = _app(monkeypatch, [_case("TC_1"), _case("TC_2", platform="iOS"), _case("TC_3", platform="All")])
 
     assert not at.exception
-    assert any("1 non-web test case" in caption.value for caption in at.caption)
+    assert any("1 mobile test case" in caption.value for caption in at.caption)
 
 
 def test_generate_is_disabled_until_base_url_is_valid(monkeypatch):
@@ -208,3 +219,106 @@ def test_download_is_hidden_until_the_base_url_is_valid_again(monkeypatch):
     assert "automation_result" in at.session_state
     assert len(at.get("download_button")) == 0
     assert any("valid Base URL to download" in warning.value for warning in at.warning)
+
+
+def test_api_only_run_needs_no_web_base_url(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_A1", platform="API", module="Orders")])
+
+    assert not at.exception
+    assert not [w for w in at.text_input if w.key == "automation_base_url"]
+    assert at.button(key="automation_generate_btn").disabled is True
+    assert any("API base URL" in warning.value for warning in at.warning)
+
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    at.text_area(key="automation_api_description").set_value("GET /orders lists orders").run(timeout=30)
+    with patch.object(AIClient, "generate_automation") as web_call, \
+            patch.object(AIClient, "generate_api_automation", return_value=FAKE_API_AUTOMATION) as api_call:
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert not at.exception
+    web_call.assert_not_called()
+    system_prompt, cases, description = api_call.call_args.args
+    assert "Playwright API tests" in system_prompt
+    assert [case["test_id"] for case in cases] == ["TC_A1"]
+    assert description == "GET /orders lists orders"
+    metrics = {metric.label: metric.value for metric in at.metric}
+    assert metrics == {"Tests": "1", "Marked fixme": "0", "Locators to verify": "0", "Requests to verify": "1"}
+    files = list(at.selectbox(key="automation_preview_file").options)
+    assert "tests/api/orders.api.spec.ts" in files and not any(f.startswith("pages/") for f in files)
+    assert any("Which token?" in md.value for md in at.markdown)
+
+
+def test_mixed_selection_makes_one_call_per_kind_and_sums_usage(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1"), _case("TC_A1", platform="API", module="Orders")])
+    at.text_input(key="automation_base_url").set_value("https://staging.example.com").run(timeout=30)
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    with patch.object(AIClient, "generate_automation", return_value=FAKE_AUTOMATION) as web_call, \
+            patch.object(AIClient, "generate_api_automation", return_value=FAKE_API_AUTOMATION) as api_call:
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert [case["test_id"] for case in web_call.call_args.args[1]] == ["TC_1"]
+    assert [case["test_id"] for case in api_call.call_args.args[1]] == ["TC_A1"]
+    stored = at.session_state["automation_result"]
+    assert stored["usage"]["input_tokens"] == 30 and stored["usage"]["output_tokens"] == 12
+    assert abs(stored["usage"]["estimated_cost_usd"] - 0.003) < 1e-9
+    metrics = {metric.label: metric.value for metric in at.metric}
+    assert metrics["Tests"] == "2" and metrics["Requests to verify"] == "1"
+    files = list(at.selectbox(key="automation_preview_file").options)
+    assert "pages/LoginPage.ts" in files and "tests/api/orders.api.spec.ts" in files
+
+
+def test_a_failed_api_call_keeps_the_web_result(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1"), _case("TC_A1", platform="API", module="Orders")])
+    at.text_input(key="automation_base_url").set_value("https://staging.example.com").run(timeout=30)
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    with patch.object(AIClient, "generate_automation", return_value=FAKE_AUTOMATION), \
+            patch.object(AIClient, "generate_api_automation", side_effect=ValueError("rate limited")):
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert any("rate limited" in error.value for error in at.error)
+    stored = at.session_state["automation_result"]
+    assert stored["api_automation"] is None
+    assert any("API tests were not generated" in warning for warning in stored["warnings"])
+    assert "pages/LoginPage.ts" in list(at.selectbox(key="automation_preview_file").options)
+
+
+def test_a_failed_web_call_stores_nothing(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1"), _case("TC_A1", platform="API", module="Orders")])
+    at.text_input(key="automation_base_url").set_value("https://staging.example.com").run(timeout=30)
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    with patch.object(AIClient, "generate_automation", side_effect=ValueError("boom")), \
+            patch.object(AIClient, "generate_api_automation", return_value=FAKE_API_AUTOMATION) as api_call:
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert not at.exception
+    api_call.assert_not_called()
+    assert "automation_result" not in at.session_state
+
+
+def test_web_only_selection_shows_no_api_inputs(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1")])
+
+    assert not [w for w in at.text_input if w.key == "automation_api_base_url"]
+    assert not [w for w in at.text_area if w.key == "automation_api_description"]
+
+
+def test_typed_inputs_survive_a_run_in_which_their_kind_is_not_selected(monkeypatch):
+    api_case = _case("TC_A1", platform="API", module="Orders")
+    at = _app(monkeypatch, [api_case])
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    at.text_area(key="automation_api_description").set_value("GET /orders lists orders").run(timeout=30)
+
+    at.session_state["last_result"] = {"test_cases": [_case("TC_1")], "summary": {}}
+    at.run(timeout=30)
+    at.text_input(key="automation_base_url").set_value("https://staging.example.com").run(timeout=30)
+    at.session_state["last_result"] = {"test_cases": [api_case], "summary": {}}
+    at.run(timeout=30)
+
+    assert at.text_input(key="automation_api_base_url").value == "https://api.example.com"
+    assert at.text_area(key="automation_api_description").value == "GET /orders lists orders"
+
+    at.session_state["last_result"] = {"test_cases": [_case("TC_1")], "summary": {}}
+    at.run(timeout=30)
+    assert at.text_input(key="automation_base_url").value == "https://staging.example.com"

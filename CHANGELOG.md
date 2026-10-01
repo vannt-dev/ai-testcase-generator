@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add API testing: a project config with `api` under `platform` makes the Generator write API
+  test cases, and the Automation page turns up to 10 of them into Playwright API tests
+  (`request` fixture) in the same project as the web tests. Paste an endpoint list or an OpenAPI
+  excerpt for accurate requests; ids saved from one response feed later requests, secrets go to
+  `.env`, and anything a request cannot express becomes a `test.fixme` with a TODO.
 - Add the Heal Locators page: upload a failing Playwright page object with the error and the
   page's current HTML, and get only its broken locators repaired, with a verdict that flags
   possible app bugs, a per-fix choice, a diff, and a download that keeps every other line.

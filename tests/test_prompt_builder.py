@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from core.prompt_builder import (
+    API_AUTOMATION_PROMPT_PATH,
     AUTOMATION_PROMPT_PATH,
     BUG_REPORT_PROMPT_PATH,
     LOCATOR_HEALING_PROMPT_PATH,
@@ -178,3 +179,26 @@ def test_locator_healing_prompt_includes_verdicts_and_project_config():
 
     assert "behaviour_changed" in prompt
     assert "Checkout needs login" in prompt
+
+
+def test_config_accepts_the_api_platform_and_the_prompt_explains_api_cases():
+    config = load_project_config(Path("configs") / "example_rest_api.yaml")
+
+    assert config["platform"] == ["api"]
+    prompt = build_system_prompt(config)
+    assert "Target platforms: api" in prompt
+    assert "METHOD /path" in prompt
+    assert '"platform": "Web | iOS | Android | API | All"' in prompt
+
+
+def test_api_automation_prompt_is_combined_with_the_project_config():
+    config = {
+        "project_name": "Demo", "platform": ["api"], "test_id_format": "TC_{MODULE}_{NUMBER}",
+        "test_types_required": ["positive"], "domain_rules": ["Errors return 422"], "glossary": {}, "notes": "",
+    }
+
+    prompt = build_system_prompt(config, base_prompt_path=API_AUTOMATION_PROMPT_PATH)
+
+    assert "Playwright API tests" in prompt
+    assert "${VAR:name}" in prompt and "${ENV:NAME}" in prompt
+    assert "Errors return 422" in prompt

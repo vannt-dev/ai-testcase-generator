@@ -14,6 +14,7 @@ COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "column_
 BUG_REPORT_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "bug_report_system_prompt.md"
 RUN_COLUMN_MAPPING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "run_column_mapping_system_prompt.md"
 AUTOMATION_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "automation_system_prompt.md"
+API_AUTOMATION_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "api_automation_system_prompt.md"
 LOCATOR_HEALING_PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "locator_healing_system_prompt.md"
 
 # Rough token estimate ~ character count / 4 (common rule of thumb for
@@ -32,7 +33,7 @@ class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     project_name: str = Field(min_length=1)
-    platform: list[Literal["web", "ios", "android"]] = Field(min_length=1)
+    platform: list[Literal["web", "ios", "android", "api"]] = Field(min_length=1)
     test_id_format: str = Field(min_length=1)
     test_types_required: list[
         Literal[

@@ -1,0 +1,24 @@
+# Sample config for an API-only project. Copy it to try API test cases.
+project_name: "Demo Orders API"
+platform: [api]
+
+test_id_format: "TC_{MODULE}_{NUMBER}"
+
+test_types_required:
+  - positive
+  - negative
+  - edge_case
+  - security
+
+domain_rules:
+  - "Every endpoint except POST /auth/login needs the header Authorization: Bearer <token>"
+  - "A request without a valid token returns 401; a token without the needed role returns 403"
+  - "Validation errors return 422 with a JSON body {\"errors\": [{\"field\": ..., \"message\": ...}]}"
+  - "An order holds 1 to 50 lines; quantity per line is 1 to 999"
+  - "A missing resource returns 404"
+
+glossary:
+  SKU: "Stock keeping unit, the product code of an order line"
+  Order: "A customer's purchase; statuses are pending, paid, shipped, cancelled"
+
+notes: "JSON only. Ids are integers."

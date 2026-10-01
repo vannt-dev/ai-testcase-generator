@@ -22,6 +22,23 @@ npm test
 - `TrangChu.userMenu`
 - `TrangChu.languageSelect`
 
+## API tests
+
+The tests under `tests/api` call `API_BASE_URL` from `.env`. Run only them with:
+
+```bash
+npx playwright test tests/api
+```
+
+### API tests marked fixme
+
+- `TC_ORD_003` Cancel an order
+
+### Requests to verify
+
+- `TC_ORD_002` step 1: POST /orders
+
 ## Open questions
 
 - Which account should the login tests use?
+- Which role does the API token need?

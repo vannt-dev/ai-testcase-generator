@@ -15,18 +15,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from core.api_automation_validate import validate_api_automation  # noqa: E402
 from core.automation_validate import validate_automation  # noqa: E402
 from core.locator_healing import apply_fixes, parse_locators, validate_fixes  # noqa: E402
 from core.playwright_renderer import render_project  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "automation" / "ai_output.json"
+API_FIXTURE = ROOT / "tests" / "fixtures" / "automation" / "api_output.json"
 HEALING = ROOT / "tests" / "fixtures" / "automation" / "healing.json"
 
 
 def render_fixture() -> dict[str, str]:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     result, _ = validate_automation(fixture["ai_output"], fixture["modules"])
-    files = render_project(result, fixture["project_name"], fixture["base_url"])
+    api_fixture = json.loads(API_FIXTURE.read_text(encoding="utf-8"))
+    api_result, _ = validate_api_automation(api_fixture["ai_output"], api_fixture["modules"])
+    files = render_project(
+        result, fixture["project_name"], fixture["base_url"], api_result, api_fixture["api_base_url"],
+    )
     # A healed copy of one page object, so CI type-checks patched files too.
     healing = json.loads(HEALING.read_text(encoding="utf-8"))
     source = files[healing["file"]]

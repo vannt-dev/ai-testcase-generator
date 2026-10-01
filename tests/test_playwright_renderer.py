@@ -283,3 +283,75 @@ def test_env_placeholder_in_expect_url_is_not_listed_in_env_example():
     tests = [{"test_id": "TC_1", "title": "t", "module": "", "steps": [_step("expect_url", value="${ENV:HOME_URL}")]}]
 
     assert render_project(_result(tests), "Demo", "https://x.test")[".env.example"] == "BASE_URL=https://x.test\n"
+
+
+WEB = {
+    "pages": [{"name": "LoginPage", "var": "loginPage", "path": "/login", "locators": [
+        {"key": "emailInput", "strategy": "label", "role": "", "value": "Email", "confident": True},
+    ]}],
+    "tests": [{"test_id": "TC_1", "title": "Open login", "module": "Login", "steps": [
+        {"action": "goto", "page": "LoginPage", "locator": "", "value": "", "source": "Open login"},
+    ]}],
+    "open_questions": ["Which account?"],
+}
+NO_WEB = {"pages": [], "tests": [], "open_questions": []}
+
+
+def _api_step(**overrides):
+    step = {
+        "action": "request", "method": "GET", "path": "/orders", "headers": [], "query": [], "body": "",
+        "expect_status": 200, "checks": [], "saves": [], "confident": True, "source": "1. GET /orders",
+    }
+    step.update(overrides)
+    return step
+
+
+API = {
+    "tests": [
+        {"test_id": "TC_ORD_1", "title": "List orders", "module": "Orders", "steps": [
+            _api_step(headers=[{"name": "Authorization", "value": "Bearer ${ENV:API_TOKEN}"}], confident=False),
+        ]},
+        {"test_id": "TC_ORD_2", "title": "Email is sent", "module": "Orders", "steps": [
+            _api_step(action="todo", method="", path="", expect_status=0, confident=False, source="Check the email"),
+        ]},
+    ],
+    "open_questions": ["Which token?"],
+}
+
+
+def test_a_project_without_api_arguments_is_unchanged():
+    plain = render_project(WEB, "Demo", "https://web.example.com")
+
+    assert render_project(WEB, "Demo", "https://web.example.com", None, "") == plain
+    assert render_project(WEB, "Demo", "https://web.example.com", {"tests": [], "open_questions": []}, "") == plain
+    assert not any(path.startswith("tests/api/") for path in plain)
+    assert "API" not in plain["README.md"] and "API_BASE_URL" not in plain[".env.example"]
+
+
+def test_api_tests_join_the_web_project():
+    files = render_project(WEB, "Demo", "https://web.example.com", API, "https://api.example.com")
+
+    assert "tests/api/orders.api.spec.ts" in files and "tests/api/support.ts" in files
+    assert "tests/login.spec.ts" in files and "pages/LoginPage.ts" in files
+    assert files[".env.example"] == (
+        "BASE_URL=https://web.example.com\nAPI_BASE_URL=https://api.example.com\nAPI_TOKEN=\n"
+    )
+    assert 'baseURL: process.env.BASE_URL ?? "https://web.example.com"' in files["playwright.config.ts"]
+    readme = files["README.md"]
+    assert "npx playwright test tests/api" in readme
+    assert "- `TC_ORD_2` Email is sent" in readme
+    assert "- `TC_ORD_1` step 1: GET /orders" in readme
+    assert "- Which account?\n- Which token?\n" in readme
+
+
+def test_an_api_only_project_has_no_pages_and_falls_back_to_the_api_base_url():
+    files = render_project(NO_WEB, "Demo", "", API, "https://api.example.com")
+
+    assert not any(path.startswith("pages/") for path in files)
+    assert [path for path in files if path.startswith("tests/")] == [
+        "tests/api/support.ts", "tests/api/orders.api.spec.ts",
+    ]
+    assert 'baseURL: process.env.BASE_URL ?? "https://api.example.com"' in files["playwright.config.ts"]
+    assert files[".env.example"].startswith(
+        "BASE_URL=https://api.example.com\nAPI_BASE_URL=https://api.example.com\n"
+    )

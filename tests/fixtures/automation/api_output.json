@@ -1,0 +1,98 @@
+{
+  "api_base_url": "https://api.demo-shop.test/v1",
+  "modules": {"TC_ORD_001": "Đơn hàng", "TC_ORD_002": "Đơn hàng", "TC_ORD_003": "Orders admin", "TC_ORD_004": "Orders admin"},
+  "ai_output": {
+    "tests": [
+      {
+        "test_id": "TC_ORD_001",
+        "title": "Create an order and read it back",
+        "steps": [
+          {
+            "action": "request", "method": "POST", "path": "/orders",
+            "headers": [{"name": "Authorization", "value": "Bearer ${ENV:API_TOKEN}"}],
+            "query": [],
+            "body": "{\"lines\": [{\"sku\": \"A-1\", \"quantity\": 2}], \"note\": \"Say \\\"hi\\\" `now` ${not a placeholder}\"}",
+            "expect_status": 201,
+            "checks": [
+              {"kind": "json_exists", "path": "id", "value": ""},
+              {"kind": "json_equals", "path": "status", "value": "\"pending\""},
+              {"kind": "json_equals", "path": "lines[0].quantity", "value": "2"}
+            ],
+            "saves": [{"var": "order id", "path": "id"}],
+            "confident": true,
+            "source": "1. POST /orders"
+          },
+          {
+            "action": "request", "method": "GET", "path": "/orders/${VAR:order id}",
+            "headers": [{"name": "Authorization", "value": "Bearer ${ENV:API_TOKEN}"}],
+            "query": [{"name": "expand", "value": "lines"}],
+            "body": "",
+            "expect_status": 200,
+            "checks": [
+              {"kind": "json_equals", "path": "id", "value": "${VAR:order id}"},
+              {"kind": "json_contains", "path": "lines[0].sku", "value": "A-"},
+              {"kind": "json_absent", "path": "error", "value": ""}
+            ],
+            "saves": [],
+            "confident": true,
+            "source": "2. GET /orders/{id}"
+          }
+        ]
+      },
+      {
+        "test_id": "TC_ORD_002",
+        "title": "Reject an order without a token",
+        "steps": [
+          {
+            "action": "request", "method": "POST", "path": "/orders",
+            "headers": [], "query": [],
+            "body": "{\"lines\": []}",
+            "expect_status": 401,
+            "checks": [{"kind": "text_contains", "path": "", "value": "token"}],
+            "saves": [],
+            "confident": false,
+            "source": "1. POST /orders without the Authorization header"
+          }
+        ]
+      },
+      {
+        "test_id": "TC_ORD_003",
+        "title": "Cancel an order",
+        "steps": [
+          {
+            "action": "request", "method": "DELETE", "path": "/orders/${VAR:missing}",
+            "headers": [], "query": [], "body": "", "expect_status": 204,
+            "checks": [], "saves": [], "confident": true,
+            "source": "1. DELETE /orders/{id}"
+          },
+          {
+            "action": "todo", "method": "", "path": "", "headers": [], "query": [], "body": "",
+            "expect_status": 0, "checks": [], "saves": [], "confident": false,
+            "source": "2. The customer receives a cancellation email"
+          }
+        ]
+      },
+      {
+        "test_id": "TC_ORD_004",
+        "title": "Preflight and headers",
+        "steps": [
+          {
+            "action": "request", "method": "OPTIONS", "path": "/orders",
+            "headers": [{"name": "Origin", "value": "https://shop.example"}],
+            "query": [], "body": "", "expect_status": 204,
+            "checks": [], "saves": [], "confident": true,
+            "source": "1. OPTIONS /orders"
+          },
+          {
+            "action": "request", "method": "HEAD", "path": "/orders",
+            "headers": [{"name": "X-Api-Key", "value": "${ENV:API_KEY}"}],
+            "query": [], "body": "", "expect_status": 200,
+            "checks": [], "saves": [], "confident": true,
+            "source": "2. HEAD /orders"
+          }
+        ]
+      }
+    ],
+    "open_questions": ["Which role does the API token need?"]
+  }
+}

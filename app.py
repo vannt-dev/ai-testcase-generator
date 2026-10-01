@@ -22,6 +22,7 @@ from core.ai_client import AIClient
 from core.excel_exporter import export_to_excel
 from core.version import __version__
 from core.result_utils import (
+    PLATFORM_OPTIONS,
     build_edited_result,
     find_incomplete_rows,
     normalize_edited_records,
@@ -196,7 +197,7 @@ if "last_result" in st.session_state:
                     required=True,
                 ),
                 "platform": st.column_config.SelectboxColumn(
-                    "Platform", options=["Web", "iOS", "Android", "All"], required=True
+                    "Platform", options=PLATFORM_OPTIONS, required=True
                 ),
             },
         )

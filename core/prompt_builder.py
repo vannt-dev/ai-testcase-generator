@@ -32,7 +32,7 @@ class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     project_name: str = Field(min_length=1)
-    platform: list[Literal["web", "ios", "android"]] = Field(min_length=1)
+    platform: list[Literal["web", "ios", "android", "api"]] = Field(min_length=1)
     test_id_format: str = Field(min_length=1)
     test_types_required: list[
         Literal[

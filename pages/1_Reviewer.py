@@ -22,6 +22,7 @@ from core.prompt_builder import (
     load_project_config,
 )
 from core.result_utils import (
+    PLATFORM_OPTIONS,
     TEST_CASE_FIELDS,
     build_edited_result,
     find_incomplete_rows,
@@ -243,7 +244,7 @@ if "review_result" in st.session_state:
                     required=True,
                 ),
                 "platform": st.column_config.SelectboxColumn(
-                    "Platform", options=["Web", "iOS", "Android", "All"], required=True
+                    "Platform", options=PLATFORM_OPTIONS, required=True
                 ),
             },
         )

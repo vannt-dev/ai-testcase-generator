@@ -49,3 +49,11 @@ Edit `prompts/base_system_prompt.md`. This file contains the common
 rules (required test case classification, JSON output format...) that
 apply to every project. Project-specific information shouldn't go here
 — put it in the corresponding YAML config file instead.
+
+## API projects
+
+Set `platform: [api]` (or add `api` next to `web`) to get API test cases:
+their steps are written as `METHOD /path`, their test data holds the headers
+and body, and their expected result names the status code and response
+fields. Put the API's shared rules — authentication, error format, limits —
+in `domain_rules`. See `configs/example_rest_api.yaml`.

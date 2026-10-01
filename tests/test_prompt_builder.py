@@ -178,3 +178,13 @@ def test_locator_healing_prompt_includes_verdicts_and_project_config():
 
     assert "behaviour_changed" in prompt
     assert "Checkout needs login" in prompt
+
+
+def test_config_accepts_the_api_platform_and_the_prompt_explains_api_cases():
+    config = load_project_config(Path("configs") / "example_rest_api.yaml")
+
+    assert config["platform"] == ["api"]
+    prompt = build_system_prompt(config)
+    assert "Target platforms: api" in prompt
+    assert "METHOD /path" in prompt
+    assert '"platform": "Web | iOS | Android | API | All"' in prompt

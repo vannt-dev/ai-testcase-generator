@@ -13,6 +13,9 @@ TEST_CASE_FIELDS = (
     "platform",
 )
 
+# The platform choices of the test case editors; mirrors TestCase.platform.
+PLATFORM_OPTIONS = ["Web", "iOS", "Android", "API", "All"]
+
 TYPE_KEYS = {
     "Positive": "positive",
     "Negative": "negative",

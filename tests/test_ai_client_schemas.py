@@ -265,3 +265,16 @@ def test_healing_result_requires_a_reason_per_fix():
 
     with pytest.raises(pydantic.ValidationError):
         HealingResult.model_validate(data)
+
+
+def test_test_case_accepts_the_api_platform():
+    from core.ai_client import TestCase  # imported here: pytest would try to collect a module-level Test* class
+
+    case = TestCase.model_validate({
+        "test_id": "TC_ORD_001", "module": "Orders", "title": "Create an order",
+        "precondition": "A valid token", "steps": "1. POST /orders",
+        "test_data": '{"sku": "A-1", "quantity": 2}', "expected_result": "201 and an id",
+        "priority": "High", "type": "Positive", "platform": "API",
+    })
+
+    assert case.platform == "API"

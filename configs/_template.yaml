@@ -4,7 +4,7 @@
 # =============================================================
 
 project_name: "Project name"
-platform: [web]   # can be [web], [ios, android], or [web, ios, android]
+platform: [web]   # any of web, ios, android, api — e.g. [web], [ios, android], [web, api], [api]
 
 # Test case ID format; {MODULE} and {NUMBER} are filled in by the AI
 test_id_format: "TC_{MODULE}_{NUMBER}"

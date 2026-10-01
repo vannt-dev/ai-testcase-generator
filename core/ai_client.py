@@ -45,7 +45,7 @@ class TestCase(BaseModel):
     type: Literal[
         "Positive", "Negative", "Edge case", "UI/UX", "Compatibility", "Performance", "Security"
     ]
-    platform: Literal["Web", "iOS", "Android", "All"]
+    platform: Literal["Web", "iOS", "Android", "API", "All"]
 
 
 class TestCaseSummary(BaseModel):

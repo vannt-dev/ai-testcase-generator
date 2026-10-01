@@ -4,6 +4,7 @@ import pydantic
 import pytest
 
 from core.ai_client import (
+    ApiAutomationResult,
     AutomationResult,
     BugReport,
     ColumnMappingResult,
@@ -278,3 +279,35 @@ def test_test_case_accepts_the_api_platform():
     })
 
     assert case.platform == "API"
+
+
+# ---------- ApiAutomationResult ----------
+
+VALID_API_AUTOMATION = {
+    "tests": [{
+        "test_id": "TC_ORD_001", "title": "Create an order",
+        "steps": [{
+            "action": "request", "method": "POST", "path": "/orders",
+            "headers": [{"name": "Authorization", "value": "Bearer ${ENV:API_TOKEN}"}],
+            "query": [], "body": '{"sku": "A-1"}', "expect_status": 201,
+            "checks": [{"kind": "json_exists", "path": "id", "value": ""}],
+            "saves": [{"var": "orderId", "path": "id"}],
+            "confident": True, "source": "1. POST /orders",
+        }],
+    }],
+    "open_questions": [],
+}
+
+
+def test_api_automation_result_accepts_valid_input():
+    result = ApiAutomationResult.model_validate(VALID_API_AUTOMATION)
+
+    assert result.tests[0].steps[0].saves[0].var == "orderId"
+
+
+def test_api_automation_result_rejects_unknown_action_and_check_kind():
+    for field, value in (("action", "click"), ("checks", [{"kind": "regex", "path": "", "value": ""}])):
+        data = copy.deepcopy(VALID_API_AUTOMATION)
+        data["tests"][0]["steps"][0][field] = value
+        with pytest.raises(pydantic.ValidationError):
+            ApiAutomationResult.model_validate(data)

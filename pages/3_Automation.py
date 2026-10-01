@@ -140,7 +140,7 @@ def _select_cases(cases: list[dict], editor_key: str) -> tuple[list[dict], list[
     eligible = [case for case in cases if id(case) in api_ids or id(case) in web_ids]
     hidden = len(cases) - len(eligible)
     if hidden:
-        st.caption(f"{hidden} mobile test case(s) hidden: only Web, All and API cases can be automated here.")
+        st.caption(f"{hidden} test case(s) hidden: only Web, All and API cases can be automated here.")
     if not eligible:
         st.info("None of these test cases target the web or an API.")
         return [], []
@@ -237,8 +237,17 @@ def _generate(
     automation, api_automation = NO_WEB_AUTOMATION, None
     warnings: list[str] = []
     usages: list[dict] = []
+    api_failed = False
+    # After a run whose API call failed, the web result for the same selection is kept and not paid for twice.
+    previous = st.session_state.get("automation_result")
+    reuse_web = bool(
+        previous and previous.get("api_failed") and previous["signature"] == current_signature and selected
+    )
     with st.status("Generating Playwright tests...", expanded=False) as status:
-        if selected:
+        if reuse_web:
+            automation, warnings = previous["automation"], list(previous["web_warnings"])
+            usages.append(previous["web_usage"])
+        elif selected:
             system_prompt = build_system_prompt(config, base_prompt_path=AUTOMATION_PROMPT_PATH)
             try:
                 response = client.generate_automation(system_prompt, selected, pages)
@@ -250,6 +259,7 @@ def _generate(
             modules = {case.get("test_id", ""): case.get("module", "") for case in selected}
             automation, warnings = validate_automation(response["automation"], modules)
             usages.append(response["usage"])
+        web_warnings, web_usage = list(warnings), (usages[0] if usages else {})
         if api_selected:
             system_prompt = build_system_prompt(config, base_prompt_path=API_AUTOMATION_PROMPT_PATH)
             try:
@@ -261,18 +271,27 @@ def _generate(
                     status.update(label=f"Error: {e}", state="error")
                     return
                 # The web call is already paid for: keep its result and say what is missing.
-                warnings.append(f"API tests were not generated: {e}. Generate again to retry them.")
+                api_failed = True
+                warnings.append(
+                    f"API tests were not generated: {e}. Generate again to retry only them; the web tests are kept."
+                )
             else:
                 modules = {case.get("test_id", ""): case.get("module", "") for case in api_selected}
                 api_automation, api_warnings = validate_api_automation(response["api_automation"], modules)
                 warnings += api_warnings
                 usages.append(response["usage"])
-        status.update(label="Generation complete", state="complete")
+        if api_failed:
+            status.update(label="Web tests generated; the API tests failed", state="error")
+        else:
+            status.update(label="Generation complete", state="complete")
 
     st.session_state["automation_result"] = {
         "automation": automation,
         "api_automation": api_automation,
         "warnings": warnings,
+        "api_failed": api_failed,
+        "web_warnings": web_warnings,
+        "web_usage": web_usage,
         "usage": _sum_usage(usages),
         "signature": current_signature,
         "project_name": config["project_name"],

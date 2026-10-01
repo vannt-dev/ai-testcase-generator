@@ -23,9 +23,10 @@ def api_cases(cases: list[dict]) -> list[dict]:
 
 def input_problems(
     selected: list[dict], base_url: str, pages: list[dict],
-    api_selected: list[dict] = (), api_base_url: str = "", api_description: str = "",
+    api_selected: list[dict] | None = None, api_base_url: str = "", api_description: str = "",
 ) -> list[str]:
     """`selected` are the web cases, `api_selected` the API cases; each kind has its own limit and inputs."""
+    api_selected = api_selected or []
     problems = []
     if not selected and not api_selected:
         problems.append("Select at least one test case.")

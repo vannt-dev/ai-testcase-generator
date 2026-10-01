@@ -27,6 +27,11 @@ _VAR_RESERVED = TS_RESERVED | {
 }
 # With or without a number: _unique may append one, and "response2" is what step 2 declares.
 _STEP_LOCAL = re.compile(r"^(response|body)\d*$")
+# Any placeholder-like text, used to warn where placeholders are not replaced.
+_ANY_PLACEHOLDER = re.compile(r"\$\{(?:ENV|VAR):[^}]*\}")
+_NAMES_ARE_LITERAL = "placeholders are not replaced in names, so it is sent as written."
+# RFC 9110 token characters; anything else cannot be a header name.
+_HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 # Deeper JSON than any real request body; beyond it Python and the renderer would hit recursion limits.
 MAX_JSON_DEPTH = 50
 
@@ -170,13 +175,15 @@ def _clean_step(prefix: str, raw: dict, saved: dict[str, str], used_vars: set[st
     if body and method in BODYLESS_METHODS:
         warnings.append(f"{prefix}: a {method} request cannot send a body; it was dropped.")
         body = ""
+    if body:
+        _warn_about_keys(prefix, body, warnings)
 
     step = {
         "action": "request",
         "method": method,
         "path": path,
-        "headers": _clean_pairs(prefix, "header", raw.get("headers"), warnings, fold=True),
-        "query": _clean_pairs(prefix, "query parameter", raw.get("query"), warnings, fold=False),
+        "headers": _clean_pairs(prefix, "header", raw.get("headers"), warnings, header=True),
+        "query": _clean_pairs(prefix, "query parameter", raw.get("query"), warnings, header=False),
         "body": body,
         "expect_status": _clean_status(prefix, raw.get("expect_status"), warnings),
         "checks": _clean_checks(prefix, raw.get("checks"), warnings),
@@ -220,22 +227,48 @@ def _clean_status(prefix: str, raw, warnings: list[str]) -> int:
     return status
 
 
-def _clean_pairs(prefix: str, kind: str, raw, warnings: list[str], fold: bool) -> list[dict]:
-    """Named pairs with unique names; header names compare case-insensitively."""
+def _clean_pairs(prefix: str, kind: str, raw, warnings: list[str], header: bool) -> list[dict]:
+    """
+    Headers a client can send, each name once (compared case-insensitively:
+    they become keys of one object). Query parameters may repeat.
+    """
     pairs: list[dict] = []
     seen: set[str] = set()
     for item in _items(raw):
         name = _text(item.get("name")).strip()
+        value = _text(item.get("value"))
         if not name:
             warnings.append(f"{prefix}: {kind} without a name dropped.")
             continue
-        key = name.casefold() if fold else name
-        if key in seen:
-            warnings.append(f"{prefix}: duplicate {kind} '{name}' dropped; the first is kept.")
-            continue
-        seen.add(key)
-        pairs.append({"name": name, "value": _text(item.get("value"))})
+        if header:
+            if not _HEADER_NAME.match(name):
+                warnings.append(f"{prefix}: '{name}' is not a valid header name; the header was dropped.")
+                continue
+            if re.search(r"[\r\n]", value):
+                warnings.append(f"{prefix}: header '{name}' holds a line break; it was dropped.")
+                continue
+            if name.casefold() in seen:
+                warnings.append(f"{prefix}: duplicate {kind} '{name}' dropped; the first is kept.")
+                continue
+            seen.add(name.casefold())
+        elif _ANY_PLACEHOLDER.search(name):
+            warnings.append(f"{prefix}: {kind} name '{name}' holds a placeholder; {_NAMES_ARE_LITERAL}")
+        pairs.append({"name": name, "value": value})
     return pairs
+
+
+def _warn_about_keys(prefix: str, body: str, warnings: list[str]) -> None:
+    """A placeholder in a JSON key is sent as it is written; say so."""
+    pending = [json.loads(body)]
+    while pending:
+        value = pending.pop()
+        if isinstance(value, list):
+            pending.extend(value)
+        elif isinstance(value, dict):
+            pending.extend(value.values())
+            for key in value:
+                if _ANY_PLACEHOLDER.search(key):
+                    warnings.append(f"{prefix}: body key '{key}' holds a placeholder; {_NAMES_ARE_LITERAL}")
 
 
 def _clean_checks(prefix: str, raw, warnings: list[str]) -> list[dict]:
@@ -274,6 +307,10 @@ def _json_text(prefix: str, value: str, warnings: list[str]) -> str | None:
     alone = value.strip()
     if PLACEHOLDER.fullmatch(alone) or _VAR_REFERENCE.fullmatch(alone):
         return _json_dump(alone)
+    # As in a body: a placeholder written outside a string, e.g. {"id": ${VAR:orderId}}.
+    repaired, problem = _parse_json(_BARE_PLACEHOLDER.sub(lambda m: json.dumps(m.group(0)), value))
+    if not problem:
+        return _json_dump(repaired)
     warnings.append(f"{prefix}: expected value {value!r} is not JSON; it is compared as text.")
     return _json_dump(value)
 

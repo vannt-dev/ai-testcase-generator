@@ -76,17 +76,50 @@ def test_status_outside_the_http_range_is_cleared():
     assert any("status 999" in w for w in warnings)
 
 
-def test_duplicate_header_and_query_names_keep_the_first():
+def test_duplicate_header_names_keep_the_first_and_repeated_query_parameters_are_kept():
     steps, warnings = _steps([_step(
         headers=[{"name": "Accept", "value": "a"}, {"name": "accept", "value": "b"}, {"name": " ", "value": "c"}],
-        query=[{"name": "page", "value": "1"}, {"name": "page", "value": "2"}, {"name": "Page", "value": "3"}],
+        query=[{"name": "tag", "value": "a"}, {"name": "tag", "value": "b"}, {"name": " ", "value": "c"}],
     )])
 
     assert steps[0]["headers"] == [{"name": "Accept", "value": "a"}]
-    assert steps[0]["query"] == [{"name": "page", "value": "1"}, {"name": "Page", "value": "3"}]
+    assert steps[0]["query"] == [{"name": "tag", "value": "a"}, {"name": "tag", "value": "b"}]
     assert any("duplicate header 'accept'" in w for w in warnings)
-    assert any("duplicate query parameter 'page'" in w for w in warnings)
     assert any("header without a name" in w for w in warnings)
+    assert any("query parameter without a name" in w for w in warnings)
+    assert not any("duplicate query" in w for w in warnings)
+
+
+def test_headers_that_cannot_be_sent_are_dropped():
+    steps, warnings = _steps([_step(headers=[
+        {"name": "X Bad", "value": "a"},
+        {"name": "X-Split", "value": "a\r\nInjected: 1"},
+        {"name": "X-Fine", "value": "ok"},
+    ])])
+
+    assert steps[0]["headers"] == [{"name": "X-Fine", "value": "ok"}]
+    assert any("'X Bad' is not a valid header name" in w for w in warnings)
+    assert any("header 'X-Split' holds a line break" in w for w in warnings)
+
+
+def test_placeholders_in_names_and_keys_get_a_warning():
+    steps, warnings = _steps([_step(
+        method="POST", query=[{"name": "${ENV:KEY_NAME}", "value": "1"}], body='{"${ENV:FIELD}": 1, "plain": 2}',
+    )])
+
+    assert steps[0]["action"] == "request"
+    assert any("query parameter name '${ENV:KEY_NAME}'" in w and "not replaced" in w for w in warnings)
+    assert any("body key '${ENV:FIELD}'" in w and "not replaced" in w for w in warnings)
+
+
+def test_a_bare_placeholder_in_an_expected_value_is_quoted():
+    steps, warnings = _steps([
+        _step(saves=[{"var": "orderId", "path": "id"}]),
+        _step(checks=[{"kind": "json_equals", "path": "data", "value": '{"id": ${VAR:orderId}}'}]),
+    ])
+
+    assert steps[1]["checks"][0]["value"] == '{"id": "${VAR:orderId}"}'
+    assert warnings == []
 
 
 def test_checks_with_bad_kind_or_path_are_dropped():

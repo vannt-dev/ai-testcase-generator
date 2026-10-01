@@ -69,7 +69,25 @@ def test_a_post_with_headers_query_body_checks_and_saves():
         '  expect(String(at(body1, "message"))).toContain("created");\n'
         '  expect(await response1.text()).toContain("A-1");\n'
         '  const orderId = at(body1, "id");\n'
+        '  expect(orderId, "id is missing from the response").toBeDefined();\n'
     ) in spec
+
+
+def test_repeated_query_parameters_are_all_sent():
+    spec = _spec([_step(query=[{"name": "tag", "value": "a"}, {"name": "tag", "value": "b"}, {"name": "q", "value": "x"}])])
+
+    assert '    params: new URLSearchParams([["tag", "a"], ["tag", "b"], ["q", "x"]]),\n' in spec
+
+
+def test_a_string_body_is_sent_as_json():
+    spec = _spec([
+        _step(method="POST", body='"plain text"'),
+        _step(method="POST", body='"again"', headers=[{"name": "content-type", "value": "application/json"}]),
+    ])
+
+    assert '    headers: { "Content-Type": "application/json" },\n    data: JSON.stringify("plain text"),\n' in spec
+    assert '    headers: { "content-type": "application/json" },\n    data: JSON.stringify("again"),\n' in spec
+    assert spec.count("Content-Type") == 1
 
 
 def test_saved_variables_keep_their_type_alone_and_are_text_inside_strings():

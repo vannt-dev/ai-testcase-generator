@@ -89,7 +89,7 @@ def test_non_web_cases_are_hidden_and_counted(monkeypatch):
     at = _app(monkeypatch, [_case("TC_1"), _case("TC_2", platform="iOS"), _case("TC_3", platform="All")])
 
     assert not at.exception
-    assert any("1 mobile test case" in caption.value for caption in at.caption)
+    assert any("1 test case(s) hidden" in caption.value for caption in at.caption)
 
 
 def test_generate_is_disabled_until_base_url_is_valid(monkeypatch):
@@ -322,3 +322,27 @@ def test_typed_inputs_survive_a_run_in_which_their_kind_is_not_selected(monkeypa
     at.session_state["last_result"] = {"test_cases": [_case("TC_1")], "summary": {}}
     at.run(timeout=30)
     assert at.text_input(key="automation_base_url").value == "https://staging.example.com"
+
+
+def test_a_retry_after_a_failed_api_call_reuses_the_web_result(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_1"), _case("TC_A1", platform="API", module="Orders")])
+    at.text_input(key="automation_base_url").set_value("https://staging.example.com").run(timeout=30)
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    with patch.object(AIClient, "generate_automation", return_value=FAKE_AUTOMATION), \
+            patch.object(AIClient, "generate_api_automation", side_effect=ValueError("rate limited")):
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert any("the API tests failed" in status.label for status in at.status)
+
+    with patch.object(AIClient, "generate_automation", return_value=FAKE_AUTOMATION) as web_call, \
+            patch.object(AIClient, "generate_api_automation", return_value=FAKE_API_AUTOMATION) as api_call:
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert not at.exception
+    web_call.assert_not_called()
+    api_call.assert_called_once()
+    stored = at.session_state["automation_result"]
+    assert stored["api_automation"]["tests"][0]["test_id"] == "TC_A1"
+    assert stored["automation"]["tests"][0]["test_id"] == "TC_1"
+    assert not any("API tests were not generated" in warning for warning in stored["warnings"])
+    assert stored["usage"]["input_tokens"] == 30

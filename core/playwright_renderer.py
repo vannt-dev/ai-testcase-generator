@@ -258,7 +258,10 @@ def _api_readme(api_result: dict) -> str:
     )
 
 
-def _readme(project_name: str, result: dict, api_result: dict | None = None) -> str:
+def _readme(
+    project_name: str, result: dict, api_result: dict | None = None, api_questions: list[str] | None = None,
+) -> str:
+    """`api_result` is set when there are API tests; their questions come separately, as they matter even without."""
     fixme = [
         f"`{t['test_id']}` {_one_line(t['title'])}".rstrip()
         for t in result["tests"] if any(s["action"] == "todo" for s in t["steps"])
@@ -267,8 +270,7 @@ def _readme(project_name: str, result: dict, api_result: dict | None = None) -> 
         f"`{p['name']}.{loc['key']}`" for p in result["pages"] for loc in p["locators"] if not loc["confident"]
     ]
     questions = [_one_line(q) for q in result["open_questions"]]
-    if api_result:
-        questions += [_one_line(q) for q in api_result["open_questions"]]
+    questions += [_one_line(q) for q in api_questions or []]
     return (
         f"# {_one_line(project_name)}: Playwright tests\n"
         "\n"
@@ -329,7 +331,7 @@ def render_project(
     files["tsconfig.json"] = TSCONFIG
     files[".env.example"] = _env_example(web_base_url, names, api_base_url if api else None)
     files[".gitignore"] = GITIGNORE
-    files["README.md"] = _readme(project_name, result, api)
+    files["README.md"] = _readme(project_name, result, api, (api_result or {}).get("open_questions"))
     return files
 
 

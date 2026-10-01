@@ -228,7 +228,7 @@ if "review_result" in st.session_state:
         edited_df = st.data_editor(
             df,
             key="missing_cases_editor",
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             num_rows="dynamic",
             column_config={

@@ -109,7 +109,7 @@ requirement_text = st.text_area(
     placeholder="E.g.: As a user, I want to log in with my phone number and OTP so that...",
 )
 
-generate_btn = st.button("🚀 Generate Test Cases", type="primary", use_container_width=False)
+generate_btn = st.button("🚀 Generate Test Cases", type="primary")
 
 if generate_btn:
     if not requirement_text.strip():
@@ -181,7 +181,7 @@ if "last_result" in st.session_state:
         edited_df = st.data_editor(
             df,
             key="test_case_editor",
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             num_rows="dynamic",
             column_config={

@@ -111,16 +111,20 @@ def write_reports(
     for index, row in enumerate(rows, start=1):
         try:
             result = client.write_bug_report(system_prompt, notes_for_row(row), row["test_case"] or None)
-        except ValueError as error:
+            report, usage = result["report"], result["usage"]
+        except Exception as error:  # noqa: BLE001 - one bad row must not lose the reports already paid for
+            # ValueError is the client's own, user-facing message; anything else is named so it can be reported.
+            message = str(error) if isinstance(error, ValueError) else (
+                f"Unexpected error ({type(error).__name__}): {error}"
+            )
             errors.append(
-                {"row": row["row_number"], "test_id": row["test_case"].get("test_id", ""), "error": str(error)}
+                {"row": row["row_number"], "test_id": row["test_case"].get("test_id", ""), "error": message}
             )
         else:
-            report = result["report"]
             location = f"row {row['row_number']}"
             report["source"] = f"{source_name}, {location}" if source_name else location
             reports.append(report)
-            usages.append(result["usage"])
+            usages.append(usage)
         if on_progress:
             on_progress(index, len(rows))
     return {"reports": reports, "errors": errors, "usage": _sum_usage(usages)}

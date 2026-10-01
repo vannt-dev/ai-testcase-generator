@@ -153,3 +153,28 @@ def test_failed_rows_uses_the_given_sheet_row_numbers():
     rows = failed_rows(ROWS, MAPPING, ["Failed", "FAILED"], row_numbers=[2, 3, 5, 6])
 
     assert [row["row_number"] for row in rows] == [2, 5]
+
+
+class ExplodingClient(FakeClient):
+    """Raises something other than ValueError on its second call."""
+
+    def write_bug_report(self, system_prompt, notes, related_test_case=None):
+        if len(self.calls) == 1:
+            self.calls.append((system_prompt, notes, related_test_case))
+            raise RuntimeError("socket closed")
+        return super().write_bug_report(system_prompt, notes, related_test_case)
+
+
+def test_write_reports_survives_an_unexpected_error_on_one_row():
+    rows = failed_rows(ROWS, MAPPING, ["Failed", "FAILED", "Không đạt"])
+    progress = []
+
+    result = write_reports(ExplodingClient(), "system", rows,
+                           on_progress=lambda done, total: progress.append((done, total)))
+
+    assert [r["title"] for r in result["reports"]] == ["Bug 1", "Bug 3"]
+    assert result["errors"] == [
+        {"row": 3, "test_id": "TC_3", "error": "Unexpected error (RuntimeError): socket closed"},
+    ]
+    assert progress == [(1, 3), (2, 3), (3, 3)]
+    assert result["usage"]["input_tokens"] == 20

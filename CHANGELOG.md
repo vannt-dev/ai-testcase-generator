@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Require `streamlit>=1.50.0`. The tables use `width="stretch"` in place of the deprecated
+  `use_container_width`, which older Streamlit versions do not accept.
+- Bug reports from a test run: an unexpected error on one row no longer aborts the batch and
+  loses the reports already written; each report's open questions are listed under the summary;
+  and results that belong to another file, project, mapping or status selection are marked as
+  such instead of looking current.
 - Add API testing: a project config with `api` under `platform` makes the Generator write API
   test cases, and the Automation page turns up to 10 of them into Playwright API tests
   (`request` fixture) in the same project as the web tests. Paste an endpoint list or an OpenAPI

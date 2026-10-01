@@ -12,6 +12,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
+from core.automation_inputs import signature
 from core.bug_batch import (
     MAX_BATCH_ROWS,
     REQUIRED_RUN_FIELDS,
@@ -230,8 +231,15 @@ def _render_notes_tab(configs: list[str]) -> None:
     _usage_caption(st.session_state.get("bug_usage", {}))
 
 
-def _render_batch_result() -> None:
+def _render_batch_result(current_signature: str | None = None) -> None:
+    """`current_signature` is the selection on screen; None when no file is loaded and nothing can be compared."""
     result = st.session_state["batch_result"]
+    if current_signature is not None and current_signature != st.session_state.get("batch_signature"):
+        # The reports are paid for, so they stay; say that they no longer match what is selected.
+        st.warning(
+            "These reports were written for a different selection (file, project, mapping or status values). "
+            "Write the bug reports again to replace them."
+        )
     for error in result["errors"]:
         label = f"Row {error['row']}" + (f" ({error['test_id']})" if error["test_id"] else "")
         st.error(f"{label}: {error['error']}")
@@ -256,7 +264,7 @@ def _render_batch_result() -> None:
         summary,
         key="batch_editor",
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
         disabled=["#", "related_test_id"],
         column_config={
             "severity": st.column_config.SelectboxColumn("Severity", options=SEVERITIES, required=True),
@@ -266,6 +274,17 @@ def _render_batch_result() -> None:
     reports = apply_summary_edits(result["reports"], edited.to_dict("records"))
     # Keep the edits outside the widget: its state is dropped when the user leaves the page.
     result["reports"] = reports
+
+    with_questions = [
+        (number, report) for number, report in enumerate(reports, start=1) if report.get("open_questions")
+    ]
+    if with_questions:
+        total = sum(len(report["open_questions"]) for _, report in with_questions)
+        with st.expander(f"Open questions ({total})", expanded=True):
+            st.caption("What the AI could not tell from the test run. They are part of each exported report.")
+            for number, report in with_questions:
+                questions = "\n".join(f"- {question}" for question in report["open_questions"])
+                st.markdown(f"**#{number} {report['title']}**\n{questions}")
 
     stem = f"bug_reports_{st.session_state.get('batch_project', 'project')}"
     col_xlsx, col_md = st.columns(2)
@@ -352,6 +371,7 @@ def _render_run_tab(configs: list[str]) -> None:
             st.markdown(f"**{len(rows)}** failed row(s) will get a bug report.")
 
     ready = 0 < len(rows) <= MAX_BATCH_ROWS
+    current_signature = signature(file_id, project, rows)
     if st.button(f"🐞 Write {len(rows)} bug report(s)", key="write_batch_btn", disabled=not ready):
         try:
             config = load_project_config(CONFIGS_DIR / f"{project}.yaml")
@@ -370,9 +390,10 @@ def _render_run_tab(configs: list[str]) -> None:
         )
         st.session_state["batch_project"] = project
         st.session_state["batch_source"] = uploaded.name
+        st.session_state["batch_signature"] = current_signature
 
     if "batch_result" in st.session_state:
-        _render_batch_result()
+        _render_batch_result(current_signature)
 
 
 configs = list_available_configs(CONFIGS_DIR)

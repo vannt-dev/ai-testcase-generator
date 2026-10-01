@@ -363,3 +363,42 @@ def test_run_results_survive_switching_pages(monkeypatch):
     assert not at.exception
     assert "download_batch_xlsx" in calls
     assert any("run.xlsx" in c.value for c in at.caption)
+
+
+def _write_batch(at, responses):
+    with patch.object(AIClient, "write_bug_report", side_effect=responses):
+        at.button(key="write_batch_btn").click().run(timeout=30)
+
+
+def test_run_shows_the_open_questions_of_each_report(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+    first = _fake_result(title="Pay freezes")
+    first["report"]["open_questions"] = ["Which build was tested?", "Does it happen on iOS?"]
+    second = _fake_result(title="Cart is empty")
+    second["report"]["open_questions"] = []
+    _write_batch(at, [first, second])
+
+    assert not at.exception
+    shown = "\n".join(md.value for md in at.markdown)
+    assert "Open questions (2)" in "\n".join(e.label for e in at.expander)
+    assert "**#1 Pay freezes**" in shown
+    assert "- Which build was tested?" in shown and "- Does it happen on iOS?" in shown
+    assert "Cart is empty**" not in shown
+
+
+def test_run_marks_results_that_belong_to_another_selection(monkeypatch):
+    at = _new_page(monkeypatch)
+    _upload_run(at)
+    _write_batch(at, [_fake_result(title="Pay freezes"), _fake_result(title="Cart is empty")])
+
+    assert not any("different selection" in w.value for w in at.warning)
+
+    at.multiselect(key="run_failed_values_Status").set_value(["Failed"]).run(timeout=30)
+
+    assert not at.exception
+    assert len(at.session_state["batch_result"]["reports"]) == 2
+    assert any("different selection" in w.value for w in at.warning)
+
+    at.multiselect(key="run_failed_values_Status").set_value(["Failed", "Không đạt"]).run(timeout=30)
+    assert not any("different selection" in w.value for w in at.warning)

@@ -114,3 +114,11 @@ def test_requirement_too_long_shows_error(monkeypatch):
 
 def st_history_empty(at) -> bool:
     return "history" not in at.session_state or not at.session_state["history"]
+
+
+def test_no_page_uses_the_deprecated_use_container_width():
+    root = Path(__file__).parent.parent
+    for path in [root / "app.py", *sorted((root / "pages").glob("*.py"))]:
+        assert "use_container_width" not in path.read_text(encoding="utf-8"), path.name
+    requirement = (root / "requirements.txt").read_text(encoding="utf-8").splitlines()[0]
+    assert requirement == "streamlit>=1.50.0"

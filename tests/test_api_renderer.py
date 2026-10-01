@@ -27,7 +27,7 @@ def _spec(steps, **kwargs):
 def test_a_plain_get_renders_a_request_and_a_status_assertion():
     assert _spec([_step()]) == (
         "import { test, expect } from '@playwright/test';\n"
-        "import { apiUrl, at } from './support';\n"
+        "import { apiUrl, at, jsonBody } from './support';\n"
         "\n"
         'test("TC_1 List orders", async ({ request }) => {\n'
         "  // 1. GET /orders\n"
@@ -61,7 +61,7 @@ def test_a_post_with_headers_query_body_checks_and_saves():
         '    data: { "sku": "A-1", "quantity": 2, "tags": ["a", "b"], "gift": false, "note": null, "meta": {} },\n'
         "  });\n"
         "  expect(response1.status()).toBe(201);\n"
-        "  const body1 = await response1.json();\n"
+        "  const body1 = await jsonBody(response1);\n"
         '  expect(at(body1, "id")).toBeDefined();\n'
         '  expect(at(body1, "error")).toBeUndefined();\n'
         '  expect(at(body1, "status")).toEqual("pending");\n'
@@ -87,7 +87,7 @@ def test_saved_variables_keep_their_type_alone_and_are_text_inside_strings():
         '    data: { "orderId": orderId, "ref": "order-" + String(orderId), "key": process.env.API_KEY ?? \'\' },\n'
     ) in spec
     assert '  expect(at(body2, "id")).toEqual(orderId);\n' in spec
-    assert "  const body1 = await response1.json();\n" in spec
+    assert "  const body1 = await jsonBody(response1);\n" in spec
 
 
 def test_placeholders_are_joined_to_escaped_literals():
@@ -151,6 +151,32 @@ def test_support_file_holds_the_base_url_as_an_escaped_literal():
     assert "export function at(body: unknown, path: string): any {" in support
     assert ".replace(/\\/+$/, '')" in support
     assert "path.match(/[^.[\\]]+/g)" in support
+    # A 204 or HEAD response has no body; response.json() would throw on it.
+    assert "export async function jsonBody(response: APIResponse): Promise<any> {" in support
+    assert "return text ? JSON.parse(text) : undefined;" in support
+
+
+def test_a_proto_key_is_sent_as_a_property_not_as_the_prototype():
+    spec = _spec([_step(
+        method="POST", body='{"__proto__": {"admin": true}, "constructor": 1}',
+        checks=[{"kind": "json_equals", "path": "", "value": '{"__proto__": 1}'}],
+    )])
+
+    assert '    data: { ["__proto__"]: { "admin": true }, "constructor": 1 },\n' in spec
+    assert '.toEqual({ ["__proto__"]: 1 });\n' in spec
+
+
+def test_a_variable_no_step_declared_is_rendered_as_text_never_as_an_identifier():
+    spec = _spec([
+        _step(saves=[{"var": "orderId", "path": "id"}]),
+        _step(method="POST", path="/x/${VAR:ghost}", body='{"a": "${VAR:ghost}", "b": "${VAR:orderId}"}',
+              checks=[{"kind": "json_equals", "path": "a", "value": '"${VAR:later}"'}],
+              saves=[{"var": "later", "path": "id"}]),
+    ])
+
+    assert 'apiUrl("/x/${VAR:ghost}")' in spec
+    assert '    data: { "a": "${VAR:ghost}", "b": orderId },\n' in spec
+    assert '.toEqual("${VAR:later}");\n' in spec
 
 
 def test_env_names_and_summary():

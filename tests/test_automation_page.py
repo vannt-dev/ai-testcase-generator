@@ -302,3 +302,23 @@ def test_web_only_selection_shows_no_api_inputs(monkeypatch):
 
     assert not [w for w in at.text_input if w.key == "automation_api_base_url"]
     assert not [w for w in at.text_area if w.key == "automation_api_description"]
+
+
+def test_typed_inputs_survive_a_run_in_which_their_kind_is_not_selected(monkeypatch):
+    api_case = _case("TC_A1", platform="API", module="Orders")
+    at = _app(monkeypatch, [api_case])
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    at.text_area(key="automation_api_description").set_value("GET /orders lists orders").run(timeout=30)
+
+    at.session_state["last_result"] = {"test_cases": [_case("TC_1")], "summary": {}}
+    at.run(timeout=30)
+    at.text_input(key="automation_base_url").set_value("https://staging.example.com").run(timeout=30)
+    at.session_state["last_result"] = {"test_cases": [api_case], "summary": {}}
+    at.run(timeout=30)
+
+    assert at.text_input(key="automation_api_base_url").value == "https://api.example.com"
+    assert at.text_area(key="automation_api_description").value == "GET /orders lists orders"
+
+    at.session_state["last_result"] = {"test_cases": [_case("TC_1")], "summary": {}}
+    at.run(timeout=30)
+    assert at.text_input(key="automation_base_url").value == "https://staging.example.com"

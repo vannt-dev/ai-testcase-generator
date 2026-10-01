@@ -200,3 +200,54 @@ def test_malformed_output_never_raises():
 
     assert result["tests"][0]["steps"][0]["action"] == "todo"
     assert validate_api_automation({}, {}) == ({"tests": [], "open_questions": []}, [])
+
+
+def test_json_escaped_placeholders_are_validated_like_plain_ones():
+    steps, warnings = _steps([_step(method="POST", body='{"a": "$\\u007bVAR:sneaky}"}')])
+    assert steps[0]["action"] == "todo"
+    assert any("unknown variable 'sneaky'" in w for w in warnings)
+
+    steps, warnings = _steps([_step(checks=[{"kind": "json_equals", "path": "id", "value": '"$\\u007bVAR:sneaky}"'}])])
+    assert steps[0]["action"] == "todo"
+
+    steps, warnings = _steps([_step(method="POST", body='{"k": "$\\u007bENV:HIDDEN}"}')])
+    assert "${ENV:HIDDEN}" in steps[0]["body"]
+
+
+def test_variables_named_like_step_locals_or_special_identifiers_are_renamed():
+    steps, _ = _steps([_step(saves=[
+        {"var": "response", "path": "a"}, {"var": "response", "path": "b"}, {"var": "body", "path": "c"},
+        {"var": "arguments", "path": "d"}, {"var": "eval", "path": "e"},
+    ])])
+
+    assert [s["var"] for s in steps[0]["saves"]] == [
+        "responseValue", "responseValue2", "bodyValue", "argumentsValue", "evalValue",
+    ]
+
+
+def test_deep_nesting_and_invalid_unicode_never_raise():
+    deep = "[" * 100_000 + "]" * 100_000
+    nested = "[" * 60 + "]" * 60
+    steps, warnings = _steps([
+        _step(method="POST", body=deep),
+        _step(method="POST", body=nested),
+        _step(checks=[{"kind": "json_equals", "path": "a", "value": deep}]),
+        _step(method="POST", body='{"a": "\\ud800"}', source="bad \ud800 text", path="/x\ud800"),
+    ])
+
+    assert [s["action"] for s in steps] == ["todo", "todo", "request", "request"]
+    assert steps[2]["checks"] == []
+    assert sum("nested too deeply" in w for w in warnings) == 3
+    for text in (steps[3]["body"], steps[3]["source"], steps[3]["path"]):
+        text.encode("utf-8")
+
+
+def test_a_path_parameter_left_in_braces_becomes_todo():
+    steps, warnings = _steps([
+        _step(path="/orders/{id}"),
+        _step(saves=[{"var": "orderId", "path": "id"}]),
+        _step(path="/orders/${VAR:orderId}"),
+    ])
+
+    assert [s["action"] for s in steps] == ["todo", "request", "request"]
+    assert any("still holds the parameter '{id}'" in w for w in warnings)

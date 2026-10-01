@@ -20,9 +20,12 @@ text, 0 for expect_status, [] for lists.
 - request:
   - "method": GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS.
   - "path": starts with "/", relative to the API base URL. Never include
-    the host. Put query parameters in "query", not in the path.
+    the host. Put query parameters in "query", not in the path. Replace
+    every path parameter such as {id} with a value from the test data or
+    with ${VAR:name}; a path that still holds {id} cannot be requested.
+    When you have no value for it, use a todo step.
   - "headers", "query": lists of {"name", "value"}.
-  - "body": the JSON body as text, or "" for none.
+  - "body": the JSON body as text (an object or an array), or "" for none.
   - "expect_status": the status code the expected result states, or 0 when
     it states none.
   - "checks": assertions on the response.

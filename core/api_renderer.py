@@ -2,8 +2,8 @@
 Render a validated API automation result (core.api_automation_validate) as
 Playwright API tests. Pure functions: no Streamlit, no AI. Every string that
 reaches TypeScript goes through ts_string() and every comment through
-comment(); the only expressions made from the result are placeholders the
-validator accepted.
+comment(); the only expressions made from the result are ${ENV:NAME} and
+${VAR:name} placeholders, and a variable only when this renderer declared it.
 """
 import json
 
@@ -11,52 +11,67 @@ from core.api_automation_validate import PLACEHOLDER
 from core.automation_validate import WINDOWS_RESERVED
 from core.playwright_renderer import comment, slug, ts_string
 
-# Playwright's request fixture has no method of its own for these.
+# Rendered through request.fetch with an explicit method.
 _FETCH_ONLY = ("HEAD", "OPTIONS")
 
 
-def text_expr(text: str) -> str:
-    """A TypeScript string expression for text that may hold placeholders."""
+def text_expr(text: str, declared: set[str] | None = None) -> str:
+    """
+    A TypeScript string expression for text that may hold placeholders.
+    With `declared`, a ${VAR:name} outside it stays literal text, so the
+    output never names an identifier the test did not declare.
+    """
     parts: list[str] = []
     position = 0
     for match in PLACEHOLDER.finditer(text):
+        variable = match.group(2)
+        if variable and declared is not None and variable not in declared:
+            continue
         if match.start() > position:
             parts.append(ts_string(text[position:match.start()]))
-        parts.append(f"(process.env.{match.group(1)} ?? '')" if match.group(1) else f"String({match.group(2)})")
+        parts.append(f"String({variable})" if variable else f"(process.env.{match.group(1)} ?? '')")
         position = match.end()
     if position < len(text) or not parts:
         parts.append(ts_string(text[position:]))
     return " + ".join(parts)
 
 
-def _value_expr(text: str) -> str:
+def _value_expr(text: str, declared: set[str]) -> str:
     """Like text_expr, but a string that is exactly one saved variable keeps the variable's type."""
     match = PLACEHOLDER.fullmatch(text)
-    if match and match.group(2):
+    if match and match.group(2) in declared:
         return match.group(2)
-    if match:
+    if match and match.group(1):
         return f"process.env.{match.group(1)} ?? ''"
-    return text_expr(text)
+    return text_expr(text, declared)
 
 
-def _ts_value(value) -> str:
+def _key_expr(key: str) -> str:
+    # A plain "__proto__" key would set the object's prototype instead of sending a property.
+    return f"[{ts_string(key)}]" if key == "__proto__" else ts_string(key)
+
+
+def _ts_value(value, declared: set[str]) -> str:
     """A parsed JSON value as a TypeScript literal, with placeholders inside strings resolved."""
     if isinstance(value, str):
-        return _value_expr(value)
+        return _value_expr(value, declared)
     if isinstance(value, dict):
         if not value:
             return "{}"
-        return "{ " + ", ".join(f"{ts_string(key)}: {_ts_value(item)}" for key, item in value.items()) + " }"
+        items = ", ".join(f"{_key_expr(key)}: {_ts_value(item, declared)}" for key, item in value.items())
+        return "{ " + items + " }"
     if isinstance(value, list):
-        return "[" + ", ".join(_ts_value(item) for item in value) + "]"
+        return "[" + ", ".join(_ts_value(item, declared) for item in value) + "]"
     return json.dumps(value)
 
 
-def _pairs_expr(pairs: list[dict]) -> str:
-    return "{ " + ", ".join(f"{ts_string(pair['name'])}: {text_expr(pair['value'])}" for pair in pairs) + " }"
+def _pairs_expr(pairs: list[dict], declared: set[str]) -> str:
+    return "{ " + ", ".join(
+        f"{ts_string(pair['name'])}: {text_expr(pair['value'], declared)}" for pair in pairs
+    ) + " }"
 
 
-def _render_request(step: dict, number: int) -> list[str]:
+def _render_request(step: dict, number: int, declared: set[str]) -> list[str]:
     lines: list[str] = []
     note = comment(step["source"])
     if note:
@@ -69,15 +84,15 @@ def _render_request(step: dict, number: int) -> list[str]:
     if method in _FETCH_ONLY:
         options.append(f"method: {ts_string(method)},")
     if step["headers"]:
-        options.append(f"headers: {_pairs_expr(step['headers'])},")
+        options.append(f"headers: {_pairs_expr(step['headers'], declared)},")
     if step["query"]:
-        options.append(f"params: {_pairs_expr(step['query'])},")
+        options.append(f"params: {_pairs_expr(step['query'], declared)},")
     if step["body"]:
-        options.append(f"data: {_ts_value(json.loads(step['body']))},")
+        options.append(f"data: {_ts_value(json.loads(step['body']), declared)},")
 
     call = "fetch" if method in _FETCH_ONLY else method.lower()
     response, body = f"response{number}", f"body{number}"
-    url = f"apiUrl({text_expr(step['path'])})"
+    url = f"apiUrl({text_expr(step['path'], declared)})"
     if options:
         lines.append(f"const {response} = await request.{call}({url}, {{")
         lines += [f"  {option}" for option in options]
@@ -88,20 +103,20 @@ def _render_request(step: dict, number: int) -> list[str]:
     if step["expect_status"]:
         lines.append(f"expect({response}.status()).toBe({step['expect_status']});")
     if step["saves"] or any(check["kind"] != "text_contains" for check in step["checks"]):
-        lines.append(f"const {body} = await {response}.json();")
+        lines.append(f"const {body} = await jsonBody({response});")
     for check in step["checks"]:
         target = f"at({body}, {ts_string(check['path'])})"
         kind = check["kind"]
         if kind == "json_equals":
-            lines.append(f"expect({target}).toEqual({_ts_value(json.loads(check['value']))});")
+            lines.append(f"expect({target}).toEqual({_ts_value(json.loads(check['value']), declared)});")
         elif kind == "json_contains":
-            lines.append(f"expect(String({target})).toContain({text_expr(check['value'])});")
+            lines.append(f"expect(String({target})).toContain({text_expr(check['value'], declared)});")
         elif kind == "json_exists":
             lines.append(f"expect({target}).toBeDefined();")
         elif kind == "json_absent":
             lines.append(f"expect({target}).toBeUndefined();")
         else:
-            lines.append(f"expect(await {response}.text()).toContain({text_expr(check['value'])});")
+            lines.append(f"expect(await {response}.text()).toContain({text_expr(check['value'], declared)});")
     for save in step["saves"]:
         lines.append(f"const {save['var']} = at({body}, {ts_string(save['path'])});")
     return lines
@@ -111,27 +126,42 @@ def _render_test(test: dict) -> str:
     fixme = any(step["action"] == "todo" for step in test["steps"])
     title = ts_string(f"{test['test_id']} {test['title']}".strip())
     lines = [f"{'test.fixme' if fixme else 'test'}({title}, async ({{ request }}) => {{"]
+    # Only what earlier steps of this test saved may appear as an identifier.
+    declared: set[str] = set()
     for number, step in enumerate(test["steps"], start=1):
         if step["action"] == "todo":
             lines.append(f"  // TODO: {comment(step['source'])}")
-        else:
-            lines += [f"  {line}" for line in _render_request(step, number)]
+            continue
+        lines += [f"  {line}" for line in _render_request(step, number, declared)]
+        declared.update(save["var"] for save in step["saves"])
     lines.append("});")
     return "\n".join(lines)
 
 
 def render_api_spec(tests: list[dict]) -> str:
-    imports = "import { test, expect } from '@playwright/test';\nimport { apiUrl, at } from './support';\n"
+    imports = (
+        "import { test, expect } from '@playwright/test';\n"
+        "import { apiUrl, at, jsonBody } from './support';\n"
+    )
     return imports + "\n" + "\n\n".join(_render_test(test) for test in tests) + "\n"
 
 
 def _support(api_base_url: str) -> str:
     return (
         "// Helpers for the generated API tests.\n"
+        "import type { APIResponse } from '@playwright/test';\n"
+        "\n"
         f"const API_BASE_URL = (process.env.API_BASE_URL ?? {ts_string(api_base_url)}).replace(/\\/+$/, '');\n"
         "\n"
         "export function apiUrl(path: string): string {\n"
         "  return API_BASE_URL + path;\n"
+        "}\n"
+        "\n"
+        "// The parsed JSON body, or undefined when the response has none (204, HEAD).\n"
+        "// eslint-disable-next-line @typescript-eslint/no-explicit-any\n"
+        "export async function jsonBody(response: APIResponse): Promise<any> {\n"
+        "  const text = await response.text();\n"
+        "  return text ? JSON.parse(text) : undefined;\n"
         "}\n"
         "\n"
         "// Reads a path such as \"data.items[0].id\" from a parsed JSON body; undefined when it is missing.\n"

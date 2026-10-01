@@ -1,6 +1,6 @@
 {
   "api_base_url": "https://api.demo-shop.test/v1",
-  "modules": {"TC_ORD_001": "Đơn hàng", "TC_ORD_002": "Đơn hàng", "TC_ORD_003": "Orders admin", "TC_ORD_004": "Orders admin"},
+  "modules": {"TC_ORD_001": "Đơn hàng", "TC_ORD_002": "Đơn hàng", "TC_ORD_003": "Orders admin", "TC_ORD_004": "Orders admin", "TC_ORD_005": "Orders admin"},
   "ai_output": {
     "tests": [
       {
@@ -89,6 +89,43 @@
             "query": [], "body": "", "expect_status": 200,
             "checks": [], "saves": [], "confident": true,
             "source": "2. HEAD /orders"
+          }
+        ]
+      }
+      ,
+      {
+        "test_id": "TC_ORD_005",
+        "title": "Awkward names and an empty response",
+        "steps": [
+          {
+            "action": "request", "method": "POST", "path": "/orders",
+            "headers": [], "query": [],
+            "body": "{\"__proto__\": {\"admin\": true}, \"key\": \"$\\u007bENV:API_KEY}\"}",
+            "expect_status": 201,
+            "checks": [],
+            "saves": [
+              {"var": "response", "path": "id"}, {"var": "response", "path": "ref"},
+              {"var": "body", "path": "status"}, {"var": "arguments", "path": "a"}, {"var": "eval", "path": "b"}
+            ],
+            "confident": true,
+            "source": "1. POST /orders"
+          },
+          {
+            "action": "request", "method": "POST", "path": "/orders",
+            "headers": [], "query": [],
+            "body": "{\"ids\": [\"${VAR:response}\", \"${VAR:body}\", \"${VAR:arguments}\", \"${VAR:eval}\"]}",
+            "expect_status": 201,
+            "checks": [],
+            "saves": [{"var": "response", "path": "id"}],
+            "confident": true,
+            "source": "2. POST /orders with the saved values"
+          },
+          {
+            "action": "request", "method": "DELETE", "path": "/orders/${VAR:response}",
+            "headers": [], "query": [], "body": "", "expect_status": 204,
+            "checks": [{"kind": "json_absent", "path": "error", "value": ""}],
+            "saves": [], "confident": true,
+            "source": "3. DELETE /orders/{id} returns no body"
           }
         ]
       }

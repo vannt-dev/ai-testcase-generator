@@ -52,6 +52,12 @@ st.set_page_config(page_title="Automation — AI Test Case Generator", page_icon
 st.title("🤖 Playwright Automation")
 st.caption("Turn web and API test cases into a Playwright + TypeScript project.")
 
+# Streamlit forgets a widget that is not drawn in a run, and the inputs of a kind (web or API) are
+# hidden while no case of that kind is selected. Re-assigning a key keeps what the user typed.
+for _key in list(st.session_state):
+    if _key.startswith(("automation_base_url", "automation_api_", "automation_page_")):
+        st.session_state[_key] = st.session_state[_key]
+
 # Same shared API key block as the other pages; each page renders its own sidebar.
 with st.sidebar:
     st.header("⚙️ Configuration")

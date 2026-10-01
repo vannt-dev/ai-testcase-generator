@@ -21,8 +21,14 @@ _VAR_REFERENCE = re.compile(r"\$\{VAR:([^}]*)\}")
 _BARE_PLACEHOLDER = re.compile(r'(?<!")\$\{(?:ENV|VAR):[^}]*\}(?!")')
 _JSON_PATH = re.compile(r"^(?:[A-Za-z_][\w-]*|\[\d+\])(?:\.[A-Za-z_][\w-]*|\[\d+\])*$")
 # Names the generated spec uses itself; responseN and bodyN are declared per step.
-_VAR_RESERVED = TS_RESERVED | {"request", "test", "expect", "process", "apiUrl", "at"}
-_STEP_LOCAL = re.compile(r"^(response|body)\d+$")
+# arguments and eval are not reserved words, but strict mode refuses them as names.
+_VAR_RESERVED = TS_RESERVED | {
+    "request", "test", "expect", "process", "apiUrl", "at", "jsonBody", "arguments", "eval",
+}
+# With or without a number: _unique may append one, and "response2" is what step 2 declares.
+_STEP_LOCAL = re.compile(r"^(response|body)\d*$")
+# Deeper JSON than any real request body; beyond it Python and the renderer would hit recursion limits.
+MAX_JSON_DEPTH = 50
 
 
 def _todo(source: str) -> dict:
@@ -34,6 +40,46 @@ def _todo(source: str) -> dict:
 
 def _items(value) -> list[dict]:
     return [item for item in value or [] if isinstance(item, dict)]
+
+
+def _scrub(value):
+    """The same structure with every string encodable as UTF-8 (a lone surrogate cannot be written to the zip)."""
+    if isinstance(value, str):
+        return value.encode("utf-8", "replace").decode("utf-8")
+    if isinstance(value, dict):
+        return {key: _scrub(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_scrub(item) for item in value]
+    return value
+
+
+def _depth(value) -> int:
+    depth, level = 0, [value]
+    while level:
+        depth += 1
+        level = [
+            child for item in level if isinstance(item, (dict, list))
+            for child in (item.values() if isinstance(item, dict) else item)
+        ]
+    return depth
+
+
+def _parse_json(text: str) -> tuple[object, str]:
+    """The parsed value and "", or None and why the text cannot be used."""
+    try:
+        value = json.loads(text)
+    except RecursionError:
+        return None, "is nested too deeply"
+    except ValueError:
+        return None, "is not valid JSON"
+    if _depth(value) > MAX_JSON_DEPTH:
+        return None, "is nested too deeply"
+    return value, ""
+
+
+def _json_dump(value) -> str:
+    """JSON text with unicode escapes decoded, so a placeholder hidden behind one is seen and checked."""
+    return _scrub(json.dumps(value, ensure_ascii=False))
 
 
 def _valid_path(path: str) -> bool:
@@ -57,6 +103,7 @@ def validate_api_automation(result: dict, modules: dict[str, str]) -> tuple[dict
     tests: list[dict] = []
     used_ids: set[str] = set()
     returned_ids: set[str] = set()
+    result = _scrub(result)
     for raw in _items(result.get("tests")):
         raw_id = _text(raw.get("test_id")).strip() or "TC"
         if raw_id not in modules and raw_id not in returned_ids:
@@ -110,10 +157,15 @@ def _clean_step(prefix: str, raw: dict, saved: dict[str, str], used_vars: set[st
     if not path.startswith("/") or re.search(r"\s", _VAR_REFERENCE.sub("", path)):
         warnings.append(f"{prefix}: path '{path}' must start with '/' and hold no spaces.")
         return _todo(label)
+    parameter = re.search(r"\{[^{}]*\}", PLACEHOLDER.sub("", _VAR_REFERENCE.sub("", path)))
+    if parameter:
+        # "/orders/{id}" would be requested literally; the id has to come from test data or a saved value.
+        warnings.append(f"{prefix}: path '{path}' still holds the parameter '{parameter.group(0)}'.")
+        return _todo(label)
 
-    body = _clean_body(_text(raw.get("body")).strip())
-    if body is None:
-        warnings.append(f"{prefix}: body is not valid JSON.")
+    body, problem = _clean_body(_text(raw.get("body")).strip())
+    if problem:
+        warnings.append(f"{prefix}: body {problem}.")
         return _todo(label)
     if body and method in BODYLESS_METHODS:
         warnings.append(f"{prefix}: a {method} request cannot send a body; it was dropped.")
@@ -143,17 +195,18 @@ def _clean_step(prefix: str, raw: dict, saved: dict[str, str], used_vars: set[st
     return step
 
 
-def _clean_body(body: str) -> str | None:
-    """The body as JSON text, "" for none, or None when it is not JSON."""
+def _clean_body(body: str) -> tuple[str, str]:
+    """The body as normalised JSON text ("" for none) and "", or "" and why it cannot be used."""
     if not body:
-        return ""
+        return "", ""
+    problem = ""
     for candidate in (body, _BARE_PLACEHOLDER.sub(lambda m: json.dumps(m.group(0)), body)):
-        try:
-            json.loads(candidate)
-        except ValueError:
-            continue
-        return candidate
-    return None
+        value, problem = _parse_json(candidate)
+        if not problem:
+            return _json_dump(value), ""
+        if problem != "is not valid JSON":
+            break
+    return "", problem
 
 
 def _clean_status(prefix: str, raw, warnings: list[str]) -> int:
@@ -201,25 +254,28 @@ def _clean_checks(prefix: str, raw, warnings: list[str]) -> list[dict]:
             continue
         if kind == "json_equals":
             value = _json_text(prefix, value, warnings)
+            if value is None:
+                continue
         elif kind in ("json_exists", "json_absent"):
             value = ""
         checks.append({"kind": kind, "path": path, "value": value})
     return checks
 
 
-def _json_text(prefix: str, value: str, warnings: list[str]) -> str:
-    """The expected value of json_equals as JSON text."""
-    try:
-        json.loads(value)
-        return value
-    except ValueError:
-        pass
+def _json_text(prefix: str, value: str, warnings: list[str]) -> str | None:
+    """The expected value of json_equals as normalised JSON text; None when the check must be dropped."""
+    parsed, problem = _parse_json(value)
+    if not problem:
+        return _json_dump(parsed)
+    if problem != "is not valid JSON":
+        warnings.append(f"{prefix}: expected value {problem}; the check was dropped.")
+        return None
     # A lone placeholder is a value, not a mistake: quote it so it reads as a JSON string.
     alone = value.strip()
     if PLACEHOLDER.fullmatch(alone) or _VAR_REFERENCE.fullmatch(alone):
-        return json.dumps(alone, ensure_ascii=False)
+        return _json_dump(alone)
     warnings.append(f"{prefix}: expected value {value!r} is not JSON; it is compared as text.")
-    return json.dumps(value, ensure_ascii=False)
+    return _json_dump(value)
 
 
 def _clean_saves(prefix: str, raw, saved: dict[str, str], used_vars: set[str], warnings: list[str]) -> list[dict]:

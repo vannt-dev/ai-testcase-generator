@@ -355,3 +355,11 @@ def test_an_api_only_project_has_no_pages_and_falls_back_to_the_api_base_url():
     assert files[".env.example"].startswith(
         "BASE_URL=https://api.example.com\nAPI_BASE_URL=https://api.example.com\n"
     )
+
+
+def test_api_open_questions_reach_the_readme_even_without_api_tests():
+    files = render_project(WEB, "Demo", "https://web.example.com", {"tests": [], "open_questions": ["Which token?"]}, "")
+
+    assert "- Which account?\n- Which token?\n" in files["README.md"]
+    assert not any(path.startswith("tests/api/") for path in files)
+    assert "## API tests" not in files["README.md"]

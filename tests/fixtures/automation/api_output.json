@@ -89,6 +89,21 @@
             "query": [], "body": "", "expect_status": 200,
             "checks": [], "saves": [], "confident": true,
             "source": "2. HEAD /orders"
+          },
+          {
+            "action": "request", "method": "GET", "path": "/orders",
+            "headers": [],
+            "query": [{"name": "tag", "value": "new"}, {"name": "tag", "value": "paid"}, {"name": "page", "value": "1"}],
+            "body": "", "expect_status": 200,
+            "checks": [], "saves": [], "confident": true,
+            "source": "3. GET /orders?tag=new&tag=paid&page=1"
+          },
+          {
+            "action": "request", "method": "PUT", "path": "/orders/1/note",
+            "headers": [], "query": [],
+            "body": "\"Leave at the door\"", "expect_status": 204,
+            "checks": [], "saves": [], "confident": true,
+            "source": "4. PUT /orders/1/note with a JSON string"
           }
         ]
       }

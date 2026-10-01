@@ -13,6 +13,7 @@ test("TC_ORD_001 Create an order and read it back", async ({ request }) => {
   expect(at(body1, "status")).toEqual("pending");
   expect(at(body1, "lines[0].quantity")).toEqual(2);
   const orderId = at(body1, "id");
+  expect(orderId, "id is missing from the response").toBeDefined();
   // 2. GET /orders/{id}
   const response2 = await request.get(apiUrl("/orders/" + String(orderId)), {
     headers: { "Authorization": "Bearer " + (process.env.API_TOKEN ?? '') },

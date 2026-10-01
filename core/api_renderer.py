@@ -71,6 +71,15 @@ def _pairs_expr(pairs: list[dict], declared: set[str]) -> str:
     ) + " }"
 
 
+def _query_expr(pairs: list[dict], declared: set[str]) -> str:
+    names = [pair["name"] for pair in pairs]
+    if len(set(names)) == len(names):
+        return _pairs_expr(pairs, declared)
+    # A name sent more than once (?tag=a&tag=b) cannot be an object key.
+    entries = ", ".join(f"[{ts_string(pair['name'])}, {text_expr(pair['value'], declared)}]" for pair in pairs)
+    return f"new URLSearchParams([{entries}])"
+
+
 def _render_request(step: dict, number: int, declared: set[str]) -> list[str]:
     lines: list[str] = []
     note = comment(step["source"])
@@ -80,15 +89,25 @@ def _render_request(step: dict, number: int, declared: set[str]) -> list[str]:
         lines.append("// TODO verify this request: the endpoint was not in the API description")
 
     method = step["method"]
+    headers = step["headers"]
+    data = ""
+    if step["body"]:
+        parsed = json.loads(step["body"])
+        data = _ts_value(parsed, declared)
+        if isinstance(parsed, str):
+            # Playwright sends a string as it is, with no JSON content type; a JSON string needs both.
+            data = f"JSON.stringify({data})"
+            if not any(pair["name"].casefold() == "content-type" for pair in headers):
+                headers = headers + [{"name": "Content-Type", "value": "application/json"}]
     options: list[str] = []
     if method in _FETCH_ONLY:
         options.append(f"method: {ts_string(method)},")
-    if step["headers"]:
-        options.append(f"headers: {_pairs_expr(step['headers'], declared)},")
+    if headers:
+        options.append(f"headers: {_pairs_expr(headers, declared)},")
     if step["query"]:
-        options.append(f"params: {_pairs_expr(step['query'], declared)},")
-    if step["body"]:
-        options.append(f"data: {_ts_value(json.loads(step['body']), declared)},")
+        options.append(f"params: {_query_expr(step['query'], declared)},")
+    if data:
+        options.append(f"data: {data},")
 
     call = "fetch" if method in _FETCH_ONLY else method.lower()
     response, body = f"response{number}", f"body{number}"
@@ -119,6 +138,9 @@ def _render_request(step: dict, number: int, declared: set[str]) -> list[str]:
             lines.append(f"expect(await {response}.text()).toContain({text_expr(check['value'], declared)});")
     for save in step["saves"]:
         lines.append(f"const {save['var']} = at({body}, {ts_string(save['path'])});")
+        # Without this a missing value would reach later requests as the text "undefined".
+        missing = ts_string(f"{save['path'] or 'the body'} is missing from the response")
+        lines.append(f"expect({save['var']}, {missing}).toBeDefined();")
     return lines
 
 

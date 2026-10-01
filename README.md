@@ -24,6 +24,7 @@ one config file, no code changes needed.
 - Suggests and lets the user confirm column mappings for external files
 - Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
 - Turns web test cases into a runnable Playwright + TypeScript project (page objects, specs, zip download)
+- Writes API test cases for projects that list `api` as a platform, and turns them into Playwright API tests in the same project
 - Repairs broken locators in a Playwright page object from the error and the page's current HTML, and shows a diff before you download
 
 ## Architecture
@@ -35,7 +36,7 @@ Shared Core Engine + task-specific prompt
             +
 Project Config (YAML)
             =
-Project-aware test cases, coverage reports, bug reports and Playwright tests
+Project-aware test cases, coverage reports, bug reports and Playwright web and API tests
 ```
 
 ## Directory structure
@@ -46,7 +47,7 @@ ai-testcase-generator/
 ├── pages/
 │   ├── 1_Reviewer.py            # Coverage review, gap generation, merge/export
 │   ├── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
-│   ├── 3_Automation.py          # Playwright project from web test cases
+│   ├── 3_Automation.py          # Playwright project from web and API test cases
 │   └── 4_Heal_Locators.py       # Repairs broken locators in a page object
 ├── core/
 │   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
@@ -60,10 +61,13 @@ ai-testcase-generator/
 │   ├── automation_inputs.py      # Checks Automation page input before the AI call
 │   ├── automation_validate.py    # Cleans AI automation output (names, references)
 │   ├── playwright_renderer.py    # Renders page objects, specs and the project zip
+│   ├── api_automation_validate.py # Cleans AI API automation output (requests, variables)
+│   ├── api_renderer.py           # Renders API specs and their support file
 │   └── locator_healing.py        # Finds, validates and patches page object locators
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
-│   └── example_ecommerce.yaml    # Sample config
+│   ├── example_ecommerce.yaml    # Sample config
+│   └── example_rest_api.yaml     # Sample config for an API project
 ├── prompts/
 │   ├── base_system_prompt.md     # Generates complete test cases
 │   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
@@ -71,6 +75,7 @@ ai-testcase-generator/
 │   ├── bug_report_system_prompt.md # Writes one bug report from notes
 │   ├── run_column_mapping_system_prompt.md
 │   ├── automation_system_prompt.md # Turns web test cases into Playwright steps
+│   ├── api_automation_system_prompt.md # Turns API test cases into request steps
 │   └── locator_healing_system_prompt.md # Repairs broken locators, flags possible bugs
 ├── scripts/render_automation_fixture.py # Renders the fixture project CI type-checks
 ├── tests/                        # pytest (core logic + all Streamlit pages)
@@ -173,6 +178,25 @@ ID, date, reporter and status.
 Steps the AI cannot express become `test.fixme` with a TODO, and the
 project's README lists every test and locator that still needs a human.
 
+### Generate API tests
+
+1. Use a project whose config lists `api` under `platform`
+   (`configs/example_rest_api.yaml` is a sample). The Generator then writes
+   API test cases: steps as `METHOD /path`, test data with headers and body,
+   and an expected result with the status code and response fields.
+2. On the **Automation** page, API cases appear next to web cases with their
+   kind; choose up to 10 of each.
+3. Enter the **API base URL** and, optionally, paste an **API description**
+   (an endpoint list or an OpenAPI excerpt). With it the AI uses the real
+   endpoints; without it each request is marked for review.
+4. Generate. API tests land in `tests/api/` of the same project and use
+   Playwright's `request` fixture; `npx playwright test tests/api` runs only
+   them. Tokens and keys are read from `.env` (`${ENV:NAME}` placeholders),
+   and an id returned by one request can feed the next.
+
+Anything a request cannot express — an email, a database check, a file
+upload — becomes `test.fixme` with a TODO.
+
 ### Heal broken locators
 
 1. Open **Heal Locators** in Streamlit's page navigation
@@ -247,6 +271,7 @@ cp configs/_template.yaml configs/your_project_name.yaml
 - [x] Phase 3, step 2: Bug reports from the failed rows of an executed test run
 - [x] Phase 4, step 1: Playwright + TypeScript project generated from web test cases
 - [x] Phase 4, step 2: Self-healing — repair locators from a failing test's error and fresh HTML
+- [x] Phase 5: API test cases from a requirement, and Playwright API tests from them
 
 ## Notes
 

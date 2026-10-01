@@ -1,5 +1,5 @@
 """Unit tests for core/automation_inputs.py."""
-from core.automation_inputs import MAX_CASES, input_problems, signature, web_cases
+from core.automation_inputs import MAX_CASES, MAX_DESCRIPTION_CHARS, api_cases, input_problems, signature, web_cases
 
 CASE = {"test_id": "TC_1", "platform": "Web"}
 PAGE = {"name": "Login", "path": "/login", "snapshot": ""}
@@ -65,3 +65,41 @@ def test_signature_changes_with_any_part():
     assert signature("session", "", ["TC_1"]) == signature("session", "", ["TC_1"])
     assert signature("session", "", ["TC_1"]) != signature("session", "", ["TC_2"])
     assert signature("upload", "a", ["TC_1"]) != signature("upload", "b", ["TC_1"])
+
+
+API_CASE = {"test_id": "TC_A1", "platform": "API"}
+
+
+def test_api_cases_ignores_case_and_spaces():
+    cases = [
+        {"test_id": "1", "platform": "API"}, {"test_id": "2", "platform": " api "}, {"test_id": "3", "platform": "Web"},
+        {"test_id": "4", "platform": "All"}, {"test_id": "5"}, {"test_id": "6", "platform": None},
+    ]
+
+    assert [c["test_id"] for c in api_cases(cases)] == ["1", "2"]
+    assert [c["test_id"] for c in web_cases(cases)] == ["3", "4", "5", "6"]
+
+
+def test_api_only_selection_needs_an_api_base_url_and_no_web_base_url():
+    assert input_problems([], "", [], [API_CASE], "https://api.example.com", "") == []
+    assert input_problems([], "", [], [API_CASE], "api.example.com", "") == [
+        "Enter an API base URL that starts with http:// or https://."
+    ]
+
+
+def test_mixed_selection_checks_both_kinds():
+    problems = input_problems([CASE], "", [], [API_CASE] * (MAX_CASES + 1), "", "x" * (MAX_DESCRIPTION_CHARS + 1))
+
+    assert problems == [
+        "Select at most 10 API test cases per generation (11 selected).",
+        "Enter a Base URL that starts with http:// or https://.",
+        "Enter an API base URL that starts with http:// or https://.",
+        "The API description must be at most 50,000 characters.",
+    ]
+
+
+def test_nothing_selected_of_either_kind():
+    assert input_problems([], "", [], [], "", "") == [
+        "Select at least one test case.",
+        "Enter a Base URL that starts with http:// or https://.",
+    ]

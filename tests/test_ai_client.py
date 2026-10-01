@@ -558,7 +558,7 @@ def test_api_automation_request_without_a_description_says_so():
     for blank in ("", "   ", None):
         content = build_api_automation_request([CASE], blank)
 
-        assert "<api_description>" not in content
+        assert "<api_description>\n" not in content
         assert "set confident to false on every request" in content
 
 

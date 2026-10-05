@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-10-05
 
 - Require `streamlit>=1.50.0`. The tables use `width="stretch"` in place of the deprecated
   `use_container_width`, which older Streamlit versions do not accept.

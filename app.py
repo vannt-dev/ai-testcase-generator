@@ -20,6 +20,7 @@ from core.prompt_builder import (
 )
 from core.ai_client import AIClient
 from core.excel_exporter import export_to_excel
+from core.gherkin_exporter import export_to_gherkin
 from core.version import __version__
 from core.result_utils import (
     PLATFORM_OPTIONS,
@@ -222,12 +223,24 @@ if "last_result" in st.session_state:
 
         excel_bytes = export_to_excel(edited_result)
         export_project_name = st.session_state.get("last_project_name", "project")
-        st.download_button(
+        export_disabled = bool(incomplete_rows) or not edited_test_cases
+        export_file_stem = f"testcases_{export_project_name.replace(' ', '_')}"
+        excel_column, gherkin_column = st.columns(2)
+        excel_column.download_button(
             "⬇️ Download Excel",
             data=excel_bytes,
-            file_name=f"testcases_{export_project_name.replace(' ', '_')}.xlsx",
+            file_name=f"{export_file_stem}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            disabled=bool(incomplete_rows) or not edited_test_cases,
+            disabled=export_disabled,
+        )
+        gherkin_column.download_button(
+            "⬇️ Download Gherkin (.feature)",
+            data=export_to_gherkin(edited_result, feature_name=export_project_name),
+            file_name=f"{export_file_stem}.feature",
+            mime="text/plain",
+            disabled=export_disabled,
+            help="One Scenario per test case: precondition as Given, steps as When, "
+            "expected result as Then. Tagged with test id, module, priority, type and platform.",
         )
 
     summary = result.get("summary", {})

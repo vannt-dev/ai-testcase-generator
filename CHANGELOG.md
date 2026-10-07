@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Generator: a **Download Gherkin (.feature)** button next to the Excel one. Each test case
+  becomes a `Scenario` (precondition as `Given`, steps as `When`, expected result as `Then`),
+  tagged with its test id, module, priority, type and platform; test data and the open
+  questions are kept as comments. The conversion is mechanical and makes no AI call.
+
 ## 0.2.0 - 2026-10-05
 
 - Require `streamlit>=1.50.0`. The tables use `width="stretch"` in place of the deprecated

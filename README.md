@@ -56,6 +56,7 @@ ai-testcase-generator/
 │   ├── review_utils.py           # Column mapping and collision-safe merging
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   ├── excel_exporter.py         # Exports results to .xlsx
+│   ├── gherkin_exporter.py       # Exports results to a Gherkin .feature file
 │   ├── bug_exporters.py          # Bug report Markdown/Excel export
 │   ├── bug_batch.py              # Bug reports from the failed rows of a test run
 │   ├── automation_inputs.py      # Checks Automation page input before the AI call
@@ -119,7 +120,8 @@ Open your browser at `http://localhost:8501`.
 1. Select a project in the sidebar (defaults to `example_ecommerce`)
 2. Paste a requirement/user story into the text box
 3. Click **Generate Test Cases**
-4. Edit the result table and download the Excel file
+4. Edit the result table and download the Excel file, or a Gherkin `.feature` file with one
+   `Scenario` per test case for Cucumber, Behave, SpecFlow or pytest-bdd
 
 ### Review coverage
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Other AI providers. The sidebar of every page has an **AI provider** list: Claude (the
+  default), OpenAI, Google Gemini, or any server that speaks the OpenAI chat-completions
+  format (Ollama, LM Studio, OpenRouter, ...), each with its own key, model name and, for a
+  server, address; `.env` can hold them too (`AI_PROVIDER`, `OPENAI_*`, `GEMINI_*`, `AI_*`).
+  Replies from these providers are checked against the same schemas as Claude's before they
+  are used, and a reply that does not fit is reported with the field that is wrong. Cost is
+  estimated for Claude only. Claude's model can now be changed in the sidebar or with
+  `ANTHROPIC_MODEL`.
+- Requires the `openai` package (`pip install -r requirements.txt`).
+
 ## 0.3.0 - 2026-10-08
 
 - Generator: a **Download Gherkin (.feature)** button next to the Excel one. Each test case

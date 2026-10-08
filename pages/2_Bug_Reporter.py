@@ -12,6 +12,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
+from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.automation_inputs import signature
 from core.bug_batch import (
     MAX_BATCH_ROWS,
@@ -53,23 +54,10 @@ st.title("🐞 Bug Reporter")
 st.caption("Turn rough notes, or the failed rows of a test run, into bug reports you can paste into any tracker.")
 
 # Streamlit renders each page's sidebar separately; without this block the
-# page is a dead end when opened first with no ANTHROPIC_API_KEY set.
+# page is a dead end when opened first with no API key in the environment.
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        value=st.session_state.get("api_key", ""),
-        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
-    )
-    if api_key:
-        st.session_state["api_key"] = api_key
-        st.caption(
-            "⚠️ The API key entered here is only kept in this browser session's "
-            "memory (never written to disk). If this app is deployed publicly, "
-            "set the `ANTHROPIC_API_KEY` environment variable on the server "
-            "instead of typing it in here."
-        )
+    render_ai_settings()
 
 
 def _related_context(text: str) -> dict | str | None:
@@ -157,7 +145,7 @@ def _render_notes_tab(configs: list[str]) -> None:
     if st.button("🐞 Write bug report", key="write_bug_btn", disabled=not notes.strip()):
         try:
             config = load_project_config(CONFIGS_DIR / f"{project}.yaml")
-            client = AIClient(api_key=st.session_state.get("api_key") or None)
+            client = AIClient(**ai_client_options())
         except (ProjectConfigError, ValueError) as e:
             st.error(str(e))
             return
@@ -325,7 +313,7 @@ def _render_run_tab(configs: list[str]) -> None:
         for key in [k for k in st.session_state if k.startswith(("run_mapping_", "run_failed_values_"))]:
             del st.session_state[key]
         try:
-            client = AIClient(api_key=st.session_state.get("api_key") or None)
+            client = AIClient(**ai_client_options())
             suggestion = client.suggest_column_mapping(
                 load_run_column_mapping_prompt(), headers, raw_rows[:5]
             )["mapping"]
@@ -375,7 +363,7 @@ def _render_run_tab(configs: list[str]) -> None:
     if st.button(f"🐞 Write {len(rows)} bug report(s)", key="write_batch_btn", disabled=not ready):
         try:
             config = load_project_config(CONFIGS_DIR / f"{project}.yaml")
-            client = AIClient(api_key=st.session_state.get("api_key") or None)
+            client = AIClient(**ai_client_options())
         except (ProjectConfigError, ValueError) as e:
             st.error(str(e))
             return

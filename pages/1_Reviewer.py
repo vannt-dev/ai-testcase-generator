@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import pandas as pd
 
 from core.ai_client import AIClient
+from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.excel_exporter import export_to_excel
 from core.file_import import FileImportError, parse_uploaded_file
 from core.prompt_builder import (
@@ -41,29 +42,15 @@ st.caption("Check test case coverage against a requirement and get gap-filling s
 # The API key lives in st.session_state and is shared with the Generator
 # page, but Streamlit renders each page's sidebar independently — without
 # this block the page is a dead end when opened first with no
-# ANTHROPIC_API_KEY environment variable set.
+# API key in the environment.
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        value=st.session_state.get("api_key", ""),
-        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
-    )
-    if api_key:
-        st.session_state["api_key"] = api_key
-    if api_key:
-        st.caption(
-            "⚠️ The API key entered here is only kept in this browser session's "
-            "memory (never written to disk). If this app is deployed publicly, "
-            "set the `ANTHROPIC_API_KEY` environment variable on the server "
-            "instead of typing it in here."
-        )
+    render_ai_settings()
 
 
 def _run_review(requirement_text: str, config: dict, test_cases: list[dict]) -> None:
     try:
-        client = AIClient(api_key=st.session_state.get("api_key") or None)
+        client = AIClient(**ai_client_options())
     except ValueError as e:
         st.error(str(e))
         return
@@ -150,7 +137,7 @@ with upload_tab:
         if raw_rows:
             if st.session_state.get("mapped_file_name") != uploaded_file.name:
                 try:
-                    client = AIClient(api_key=st.session_state.get("api_key") or None)
+                    client = AIClient(**ai_client_options())
                     headers = list(raw_rows[0].keys())
                     suggestion = client.suggest_column_mapping(
                         load_column_mapping_prompt(), headers, raw_rows[:5]
@@ -202,7 +189,7 @@ if "review_result" in st.session_state:
     if review["gaps"]:
         if st.button("✨ Generate missing cases", key="generate_missing_btn"):
             try:
-                client = AIClient(api_key=st.session_state.get("api_key") or None)
+                client = AIClient(**ai_client_options())
             except ValueError as e:
                 st.error(str(e))
                 st.stop()

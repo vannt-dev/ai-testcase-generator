@@ -7,7 +7,8 @@
 A tool that helps **manual testers** generate test cases from a
 requirement/user story, review an existing test set for coverage gaps and
 duplicates, generate the missing cases, and export a ready-to-use Excel file.
-It uses Claude and is designed to be **applicable to any project** — just add
+It uses Claude by default, can use OpenAI, Google Gemini or a local model
+server instead, and is designed to be **applicable to any project** — just add
 one config file, no code changes needed.
 
 ## Why use this tool
@@ -50,7 +51,9 @@ ai-testcase-generator/
 │   ├── 3_Automation.py          # Playwright project from web and API test cases
 │   └── 4_Heal_Locators.py       # Repairs broken locators in a page object
 ├── core/
-│   ├── ai_client.py              # Calls the Claude API (retry, pricing, structured output)
+│   ├── ai_client.py              # Calls the AI provider (retry, pricing, structured output)
+│   ├── ai_providers.py           # The providers and what each needs (key, model, address)
+│   ├── ai_sidebar.py             # The sidebar block that chooses the provider, on every page
 │   ├── file_import.py            # Safely parses uploaded .xlsx/.csv files
 │   ├── prompt_builder.py         # Builds Generator/Reviewer prompts + project config
 │   ├── review_utils.py           # Column mapping and collision-safe merging
@@ -106,6 +109,34 @@ cp .env.example .env
 
 (Or skip this step and enter the API key directly in the sidebar when
 running the app.)
+
+### Other AI providers
+
+Claude is the default, and the provider the prompts were written and tried
+with. The sidebar's **AI provider** list offers three more; each needs a
+model name, typed in the sidebar or set in `.env`:
+
+| Provider | Key | Model | Address |
+| --- | --- | --- | --- |
+| Claude (Anthropic) | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL`, optional (default `claude-sonnet-5`) | |
+| OpenAI | `OPENAI_API_KEY` | `OPENAI_MODEL` | |
+| Google Gemini | `GEMINI_API_KEY` | `GEMINI_MODEL` | |
+| OpenAI-compatible server (Ollama, LM Studio, OpenRouter, ...) | `AI_API_KEY`, only if the server needs one | `AI_MODEL` | `AI_BASE_URL`, for example `http://localhost:11434/v1` |
+
+`AI_PROVIDER` (`anthropic`, `openai`, `gemini` or `compatible`) sets which
+one the sidebar starts on. A key typed for one provider is kept apart from
+the others and is never sent to them.
+
+The three other providers are reached through the OpenAI chat-completions
+format. The app asks for JSON that follows the result's schema, falls back to
+plain JSON mode on a server that does not know schema-constrained output, and
+checks every reply against the schema before using it, so a model that cannot
+keep to the structure fails with a message that names the field instead of
+producing a broken table. Expect the quality of test cases, reviews and
+generated automation to vary with the model: a small local model may need
+several tries. Cost is estimated for Claude only.
+
+With a local server such as Ollama nothing leaves your machine.
 
 ## Try it out
 
@@ -239,7 +270,7 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   for the current browser session — it's never written to disk or logged.
 - If deploying this app somewhere public (Streamlit Cloud, a shared
   server...), **do not** rely on the UI's API key field — set the
-  `ANTHROPIC_API_KEY` environment variable on the server/secrets manager
+  `ANTHROPIC_API_KEY` environment variable (or the chosen provider's own) on the server/secrets manager
   and hide/remove that input field, to avoid leaking the key through
   another user's session or browser logs.
 - Uploaded files are limited to 10 MiB, 500 data rows, 256 columns, and
@@ -248,7 +279,7 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   import errors. Exported text, including generated/editor values and summary
   questions, stays literal even when it begins with a spreadsheet formula prefix.
 - Page HTML/ARIA snapshots pasted on the Automation page are sent to
-  Anthropic with the test cases; remove tokens and personal data first. The
+  the chosen AI provider (Anthropic by default) with the test cases; remove tokens and personal data first. The
   Heal Locators page sends the pasted error and snapshot the same way. The
   Base URL stays local: it is written to `playwright.config.ts` only. The AI is
   told to write passwords and tokens as `${ENV:NAME}`, read from `.env`; still

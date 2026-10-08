@@ -12,6 +12,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
+from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.api_automation_validate import validate_api_automation
 from core.api_renderer import summarize_api
 from core.automation_inputs import (
@@ -58,23 +59,10 @@ for _key in list(st.session_state):
     if _key.startswith(("automation_base_url", "automation_api_", "automation_page_")):
         st.session_state[_key] = st.session_state[_key]
 
-# Same shared API key block as the other pages; each page renders its own sidebar.
+# Same shared AI settings block as the other pages; each page renders its own sidebar.
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        value=st.session_state.get("api_key", ""),
-        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
-    )
-    if api_key:
-        st.session_state["api_key"] = api_key
-        st.caption(
-            "⚠️ The API key entered here is only kept in this browser session's "
-            "memory (never written to disk). If this app is deployed publicly, "
-            "set the `ANTHROPIC_API_KEY` environment variable on the server "
-            "instead of typing it in here."
-        )
+    render_ai_settings()
 
 
 def _usage_caption(usage: dict) -> None:
@@ -109,7 +97,7 @@ def _uploaded_cases() -> tuple[list[dict], str]:
         for key in [k for k in st.session_state if k.startswith("automation_mapping_")]:
             del st.session_state[key]
         try:
-            client = AIClient(api_key=st.session_state.get("api_key") or None)
+            client = AIClient(**ai_client_options())
             suggestion = client.suggest_column_mapping(load_column_mapping_prompt(), headers, raw_rows[:5])["mapping"]
         except ValueError as e:
             st.warning(f"Could not get a column mapping suggestion: {e}")
@@ -229,7 +217,7 @@ def _generate(
         st.error(str(e))
         return
     try:
-        client = AIClient(api_key=st.session_state.get("api_key") or None)
+        client = AIClient(**ai_client_options())
     except ValueError as e:
         st.error(str(e))
         return

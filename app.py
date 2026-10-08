@@ -19,6 +19,7 @@ from core.prompt_builder import (
     load_project_config,
 )
 from core.ai_client import AIClient
+from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
 from core.version import __version__
@@ -54,21 +55,7 @@ with st.sidebar:
 
     selected_config = st.selectbox("Select project", available_configs)
 
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        value=st.session_state.get("api_key", ""),
-        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
-    )
-    if api_key:
-        st.session_state["api_key"] = api_key
-    if api_key:
-        st.caption(
-            "⚠️ The API key entered here is only kept in this browser session's "
-            "memory (never written to disk). If this app is deployed publicly, "
-            "set the `ANTHROPIC_API_KEY` environment variable on the server "
-            "instead of typing it in here."
-        )
+    render_ai_settings()
 
     st.divider()
     try:
@@ -126,7 +113,7 @@ if generate_btn:
         st.stop()
 
     try:
-        client = AIClient(api_key=st.session_state.get("api_key") or None)
+        client = AIClient(**ai_client_options())
     except ValueError as e:
         st.error(str(e))
         st.stop()
@@ -269,12 +256,19 @@ if "last_result" in st.session_state:
             "Estimated (USD)",
             f"${estimated_cost:.6f}" if estimated_cost is not None else "N/A",
         )
-        st.caption(
-            f"Model: {usage.get('model', 'N/A')}. Cost is an estimate based on "
-            "Claude API pricing and may differ from your actual invoice."
-        )
-        if estimated_cost is None:
+        if usage.get("provider", "anthropic") != "anthropic":
+            # Prices are only kept for Claude; another provider's bill is its own to read.
             st.caption(
-                f"⚠️ No pricing found for model `{usage.get('model', 'N/A')}` in "
-                "`MODEL_PRICING` (core/ai_client.py), so cost could not be estimated."
+                f"Model: {usage.get('model', 'N/A')}. Cost is not estimated for this provider; "
+                "see its own pricing."
             )
+        else:
+            st.caption(
+                f"Model: {usage.get('model', 'N/A')}. Cost is an estimate based on "
+                "Claude API pricing and may differ from your actual invoice."
+            )
+            if estimated_cost is None:
+                st.caption(
+                    f"⚠️ No pricing found for model `{usage.get('model', 'N/A')}` in "
+                    "`MODEL_PRICING` (core/ai_client.py), so cost could not be estimated."
+                )

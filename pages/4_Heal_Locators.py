@@ -8,6 +8,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from core.ai_client import AIClient
+from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.automation_inputs import signature
 from core.locator_healing import (
     HealingInputError,
@@ -45,23 +46,10 @@ st.set_page_config(page_title="Heal Locators — AI Test Case Generator", page_i
 st.title("🩹 Heal Locators")
 st.caption("Repair the locators of a failing Playwright page object from the error and the page's current HTML.")
 
-# Same shared API key block as the other pages; each page renders its own sidebar.
+# Same shared AI settings block as the other pages; each page renders its own sidebar.
 with st.sidebar:
     st.header("⚙️ Configuration")
-    api_key = st.text_input(
-        "Anthropic API Key",
-        type="password",
-        value=st.session_state.get("api_key", ""),
-        help="Can be left blank if the ANTHROPIC_API_KEY environment variable is already set",
-    )
-    if api_key:
-        st.session_state["api_key"] = api_key
-        st.caption(
-            "⚠️ The API key entered here is only kept in this browser session's "
-            "memory (never written to disk). If this app is deployed publicly, "
-            "set the `ANTHROPIC_API_KEY` environment variable on the server "
-            "instead of typing it in here."
-        )
+    render_ai_settings()
 
 
 def _usage_caption(usage: dict) -> None:
@@ -82,7 +70,7 @@ def _heal(project, file_name, locators, error_text, snapshot, current_signature)
         st.error(str(e))
         return
     try:
-        client = AIClient(api_key=st.session_state.get("api_key") or None)
+        client = AIClient(**ai_client_options())
     except ValueError as e:
         st.error(str(e))
         return

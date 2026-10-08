@@ -1,16 +1,19 @@
 """
-Module responsible for calling the Claude API to generate test cases.
+Module responsible for calling the AI provider (Claude by default) to generate
+test cases and the other structured results the app works with.
 """
 import json
 import os
 import re
 import time
+from types import SimpleNamespace
 from typing import Any
 from typing import Literal
 
 import anthropic
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from core.ai_providers import DEFAULT_PROVIDER, get_provider
 from core.result_utils import build_edited_result
 
 DEFAULT_MODEL = "claude-sonnet-5"
@@ -283,28 +286,76 @@ def build_healing_request(file_name: str, locators: list[dict], error_text: str,
     ])
 
 
+_JSON_FENCE = re.compile(r"^\s*```(?:json)?\s*\n(.*?)\n?```\s*$", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_json(text: str) -> str:
+    """The JSON object in a model's reply, without a code fence or words around it."""
+    fenced = _JSON_FENCE.match(text)
+    if fenced:
+        return fenced.group(1)
+    start, end = text.find("{"), text.rfind("}")
+    return text[start:end + 1] if 0 <= start < end else text
+
+
 class AIClient:
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         client: Any | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
         retry_backoff_seconds: float = DEFAULT_RETRY_BACKOFF_SECONDS,
         sleep_fn: Any = time.sleep,
+        provider: str = DEFAULT_PROVIDER,
+        base_url: str | None = None,
     ):
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if client is None and not self.api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY is missing. Set the environment variable or "
-                "pass api_key when constructing AIClient."
-            )
+        self.provider = get_provider(provider)
+        self.api_key = api_key or os.environ.get(self.provider.key_env)
+        self.model = model or os.environ.get(self.provider.model_env) or self.provider.default_model
+        self.base_url = (
+            base_url
+            or (os.environ.get(self.provider.base_url_env) if self.provider.base_url_env else None)
+            or self.provider.base_url
+            or None
+        )
+        if client is None:
+            if self.provider.key_required and not self.api_key:
+                raise ValueError(
+                    f"{self.provider.key_env} is missing. Set the environment variable or "
+                    "pass api_key when constructing AIClient."
+                )
+            if not self.model:
+                raise ValueError(
+                    f"No model was given for {self.provider.label}. Enter its name in the "
+                    f"sidebar or set the {self.provider.model_env} environment variable."
+                )
+            if self.provider.base_url_required and not self.base_url:
+                raise ValueError(
+                    f"No server address was given for {self.provider.label}. Enter it in the "
+                    f"sidebar or set the {self.provider.base_url_env} environment variable."
+                )
         # This class owns the retry policy; SDK retries underneath it would multiply attempts.
-        self.client = client or anthropic.Anthropic(api_key=self.api_key, max_retries=0)
-        self.model = model
+        if client is not None:
+            self.client = client
+        elif self.provider.id == "anthropic":
+            self.client = anthropic.Anthropic(api_key=self.api_key, max_retries=0)
+        else:
+            self.client = self._build_chat_client()
         self.max_retries = max_retries
         self.retry_backoff_seconds = retry_backoff_seconds
         self._sleep = sleep_fn
+
+    def _build_chat_client(self) -> Any:
+        try:
+            import openai
+        except ImportError as e:
+            raise ValueError(
+                f"The 'openai' package is needed to use {self.provider.label}. "
+                "Install it with: pip install -r requirements.txt"
+            ) from e
+        # A local server takes no key, but the SDK refuses to be built without one.
+        return openai.OpenAI(api_key=self.api_key or "not-needed", base_url=self.base_url, max_retries=0)
 
     def _build_usage(self, usage: Any) -> dict:
         def value(name: str) -> int:
@@ -314,7 +365,8 @@ class AIClient:
         output_tokens = value("output_tokens")
         cache_write_tokens = value("cache_creation_input_tokens")
         cache_read_tokens = value("cache_read_input_tokens")
-        pricing = MODEL_PRICING.get(self.model)
+        # The price table is Claude's; a model of another provider is never looked up in it.
+        pricing = MODEL_PRICING.get(self.model) if self.provider.id == "anthropic" else None
         estimated_cost = None
         if pricing:
             estimated_cost = (
@@ -325,6 +377,7 @@ class AIClient:
             ) / 1_000_000
 
         return {
+            "provider": self.provider.id,
             "model": self.model,
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
@@ -340,6 +393,8 @@ class AIClient:
         Returns the raw `message` object (caller extracts parsed_output/
         usage). Raises ValueError with a user-facing message on failure.
         """
+        if self.provider.id != "anthropic":
+            return self._call_chat_completions(system_prompt, user_content, output_format)
         attempt = 0
         while True:
             try:
@@ -397,10 +452,118 @@ class AIClient:
             )
         return message
 
+    def _call_chat_completions(self, system_prompt: str, user_content: str, output_format: type[BaseModel]):
+        """
+        The same call for a provider that speaks the OpenAI chat-completions
+        format. Returns an object with the `parsed_output` and `usage` the
+        Claude path returns, so the callers do not tell the two apart.
+
+        The schema is sent twice: as a JSON-schema response format, which the
+        providers that support it enforce, and in the prompt, which is what a
+        server without that support has to go by. Either way the reply is
+        validated here before anything uses it.
+        """
+        import openai
+
+        label = self.provider.label
+        schema = output_format.model_json_schema()
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    f"{system_prompt}\n\n"
+                    "Reply with one JSON object and nothing else: no code fence, no text before or "
+                    "after it. The object must match this JSON Schema:\n"
+                    f"{json.dumps(schema, ensure_ascii=False)}"
+                ),
+            },
+            {"role": "user", "content": user_content},
+        ]
+        response_format: dict = {
+            "type": "json_schema",
+            "json_schema": {"name": output_format.__name__, "schema": schema},
+        }
+        attempt = 0
+        while True:
+            try:
+                completion = self.client.chat.completions.create(
+                    model=self.model, messages=messages, response_format=response_format,
+                )
+                break
+            except openai.AuthenticationError:
+                raise ValueError(f"Invalid API key. Please check your {self.provider.key_env}.")
+            except openai.BadRequestError as e:
+                # Not every server knows the JSON-schema response format. Plain JSON mode is
+                # the widely supported fallback; the schema in the prompt then does the work.
+                if response_format["type"] == "json_schema" and re.search(
+                    r"response_format|json_schema|schema", str(e), re.IGNORECASE
+                ):
+                    response_format = {"type": "json_object"}
+                    continue
+                raise ValueError(f"{label} returned an error ({e.status_code}): {e.message}") from e
+            except openai.APIStatusError as e:
+                if not isinstance(e, openai.RateLimitError) and e.status_code < 500:
+                    raise ValueError(f"{label} returned an error ({e.status_code}): {e.message}") from e
+                attempt += 1
+                if attempt > self.max_retries:
+                    if isinstance(e, openai.RateLimitError):
+                        raise ValueError(
+                            f"{label} rate limit exceeded. Please try again in a few minutes."
+                        ) from e
+                    raise ValueError(
+                        f"{label} is temporarily unavailable ({e.status_code}). Please try again later."
+                    ) from e
+                self._sleep(self.retry_backoff_seconds * (2 ** (attempt - 1)))
+            except openai.APIConnectionError as e:
+                attempt += 1
+                if attempt > self.max_retries:
+                    where = f" at {self.base_url}" if self.base_url else ""
+                    raise ValueError(
+                        f"Could not connect to {label}{where}. Check the address and your network connection."
+                    ) from e
+                self._sleep(self.retry_backoff_seconds * (2 ** (attempt - 1)))
+
+        if not completion.choices:
+            raise ValueError(f"{label} returned no answer.")
+        choice = completion.choices[0]
+        if choice.finish_reason == "length":
+            raise ValueError(
+                "The AI's response was cut off before finishing the JSON. Try a "
+                "shorter/more specific input, or split it into multiple runs."
+            )
+        refusal = getattr(choice.message, "refusal", None)
+        if refusal:
+            raise ValueError(f"The AI declined to answer: {refusal}")
+        try:
+            parsed = output_format.model_validate_json(_extract_json(choice.message.content or ""))
+        except ValidationError as e:
+            first = e.errors()[0]
+            where = ".".join(str(part) for part in first.get("loc", ())) or "the reply"
+            raise ValueError(
+                "The AI did not return a result matching the expected schema "
+                f"({where}: {first.get('msg', 'invalid')}). Try again, or use a more capable model."
+            ) from e
+
+        usage = completion.usage
+        prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached_tokens = int(getattr(details, "cached_tokens", 0) or 0)
+        return SimpleNamespace(
+            parsed_output=parsed,
+            stop_reason="end_turn",
+            # In this format the cached part is counted inside the prompt tokens.
+            usage=SimpleNamespace(
+                input_tokens=max(prompt_tokens - cached_tokens, 0),
+                output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
+                cache_creation_input_tokens=0,
+                cache_read_input_tokens=cached_tokens,
+            ),
+        )
+
     def generate_test_cases(self, system_prompt: str, requirement_text: str) -> dict:
         """
         Send the requirement + system prompt (already merged with the project
-        config) to Claude, and return a dict {"test_cases": [...], "summary":
+        config) to the AI, and return a dict {"test_cases": [...], "summary":
         {...}} validated against the schema (Structured Outputs), ready for
         excel_exporter/app.py.
         """

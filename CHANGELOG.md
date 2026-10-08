@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-10-08
 
 - Generator: a **Download Gherkin (.feature)** button next to the Excel one. Each test case
   becomes a `Scenario` (precondition as `Given`, steps as `When`, expected result as `Then`),

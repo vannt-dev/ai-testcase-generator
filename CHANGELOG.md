@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 - 2026-10-10
 
 - Other AI providers. The sidebar of every page has an **AI provider** list: Claude (the
   default), OpenAI, Google Gemini, or any server that speaks the OpenAI chat-completions

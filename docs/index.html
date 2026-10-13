@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>AI Test Case Generator &amp; Reviewer</title>
-<meta name="description" content="Generate test cases with Claude, review existing sets for coverage gaps and duplicates, fill missing cases, and export ready-to-use Excel files.">
+<meta name="description" content="Generate test cases with Claude or another AI provider, review existing sets for coverage gaps, write bug reports, and turn test cases into Playwright web and API tests.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%A7%AA%3C/text%3E%3C/svg%3E">
 <style>
   :root{
@@ -145,6 +145,8 @@
   .features{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
   @media (max-width:760px){ .features{grid-template-columns:1fr 1fr;} }
   @media (max-width:520px){ .features{grid-template-columns:1fr;} }
+  .features.pair{grid-template-columns:1fr 1fr;}
+  @media (max-width:520px){ .features.pair{grid-template-columns:1fr;} }
   .feature{
     background:var(--bg-alt);border:1px solid var(--border);border-radius:12px;
     padding:18px;box-shadow:var(--shadow);
@@ -177,6 +179,7 @@
     <nav class="top-links">
       <a href="#demo">Demo</a>
       <a href="#reviewer">Reviewer</a>
+      <a href="#tools">More tools</a>
       <a href="#features">Features</a>
       <a href="#start">Setup</a>
       <a href="https://github.com/vannt-dev/ai-testcase-generator">GitHub</a>
@@ -190,7 +193,9 @@
     <p class="lead">
       Turn a requirement or Jira ticket into executable test cases, or review an existing
       set for coverage gaps and duplicates. Fill the missing cases, edit the merged set,
-      then export it to Excel ready for testers.
+      then export it to Excel ready for testers. From there, write bug reports from rough
+      notes or a failed test run, turn test cases into Playwright tests, and repair the
+      locators a page change broke.
     </p>
     <div class="badges">
       <img src="https://github.com/vannt-dev/ai-testcase-generator/actions/workflows/tests.yml/badge.svg" alt="Tests status">
@@ -204,7 +209,7 @@
       <a class="btn btn-secondary" href="https://github.com/vannt-dev/ai-testcase-generator">View source on GitHub</a>
     </div>
     <p style="margin-top:14px;font-size:.82rem;color:var(--text-dim);">
-      The live demo needs your own Anthropic API key (enter it in the sidebar) — it's not shared or stored anywhere.
+      The live demo needs your own API key for the AI provider you choose, Claude by default (enter it in the sidebar) — it's not shared or stored anywhere.
     </p>
   </div>
 </section>
@@ -212,7 +217,7 @@
 <section>
   <div class="wrap">
     <h2>How it works</h2>
-    <p class="section-lead">Two workflows share one core engine and the same per-project business rules.</p>
+    <p class="section-lead">Generating and reviewing share one core engine and the same per-project business rules, and so do the <a href="#tools">other pages</a>.</p>
     <div class="steps">
       <div class="step">
         <div class="num">1</div>
@@ -297,6 +302,35 @@
   </div>
 </section>
 
+<section id="tools">
+  <div class="wrap">
+    <h2>More than test cases</h2>
+    <p class="section-lead">Three more pages take the work on from the test cases, with the same project config and the same AI provider.</p>
+    <div class="features pair">
+      <div class="feature">
+        <span class="icon">🐞</span>
+        <h3>Bug Reporter</h3>
+        <p>Turns rough notes about a defect into a structured bug report: severity, priority, steps, expected and actual, and the questions still open. Or upload a test run and get one report per failed row. Export as Markdown or Excel.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🤖</span>
+        <h3>Automation</h3>
+        <p>Turns up to 10 web test cases into a Playwright + TypeScript project with page objects, as a zip. What the AI cannot express becomes a <code>test.fixme</code> with a TODO instead of a guess.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🔌</span>
+        <h3>API tests</h3>
+        <p>A project whose platform is <code>api</code> gets API test cases, and Automation writes them as Playwright API tests in the same project as the web tests. Secrets go to <code>.env</code>.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🩹</span>
+        <h3>Heal Locators</h3>
+        <p>Upload a failing page object with the error and the page's current HTML: only its broken locators are repaired, with a diff, a choice per fix, and a verdict that flags a possible app bug.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="features">
   <div class="wrap">
     <h2>Features</h2>
@@ -310,12 +344,12 @@
       <div class="feature">
         <span class="icon">🔁</span>
         <h3>Auto-retry on transient errors</h3>
-        <p>Automatically retries with backoff on rate limits or connection loss to the Anthropic API.</p>
+        <p>Automatically retries with backoff on rate limits or connection loss to the AI provider.</p>
       </div>
       <div class="feature">
         <span class="icon">💰</span>
         <h3>Cost tracking</h3>
-        <p>Shows token usage, prompt caching, and an estimated USD cost for every generation run.</p>
+        <p>Shows token usage and prompt caching for every generation run, and an estimated USD cost when the provider is Claude.</p>
       </div>
       <div class="feature">
         <span class="icon">🕘</span>
@@ -347,6 +381,16 @@
         <h3>Gap filling &amp; merge</h3>
         <p>Generates cases only for identified gaps, handles test-ID collisions, and exports the validated merged set.</p>
       </div>
+      <div class="feature">
+        <span class="icon">🥒</span>
+        <h3>Gherkin export</h3>
+        <p>Downloads the test cases as a .feature file: one <code>Scenario</code> each, tagged with its test id, module, priority and type. No AI call is made for it.</p>
+      </div>
+      <div class="feature">
+        <span class="icon">🔀</span>
+        <h3>Other AI providers</h3>
+        <p>Claude is the default; OpenAI, Google Gemini, or any server that speaks the OpenAI chat-completions format (Ollama, LM Studio, OpenRouter) can take its place. Their replies are checked against the same schemas.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -361,12 +405,12 @@ python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env          # fill in ANTHROPIC_API_KEY
+cp .env.example .env          # fill in ANTHROPIC_API_KEY, or another provider's key
 
 streamlit run app.py</code></pre>
 
     <div class="stack" style="margin-top:24px;">
-      <span>Python</span><span>Streamlit</span><span>Anthropic Claude API</span>
+      <span>Python</span><span>Streamlit</span><span>Claude · OpenAI · Gemini</span><span>Playwright</span>
       <span>Pydantic</span><span>openpyxl</span><span>pytest</span><span>GitHub Actions</span>
     </div>
   </div>

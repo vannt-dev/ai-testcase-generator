@@ -122,3 +122,31 @@ def test_no_page_uses_the_deprecated_use_container_width():
         assert "use_container_width" not in path.read_text(encoding="utf-8"), path.name
     requirement = (root / "requirements.txt").read_text(encoding="utf-8").splitlines()[0]
     assert requirement == "streamlit>=1.50.0"
+
+
+def test_traceability_panel_flags_criteria_without_a_test_case(monkeypatch):
+    import copy
+
+    traced = copy.deepcopy(FAKE_RESULT)
+    traced["acceptance_criteria"] = [
+        {"id": "AC-1", "text": "Log in with OTP"},
+        {"id": "AC-2", "text": "OTP expires after 5 minutes"},
+    ]
+    traced["test_cases"][0]["covers"] = ["AC-1"]
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    with patch.object(AIClient, "generate_test_cases", return_value=traced):
+        at = AppTest.from_file(str(APP_PATH))
+        at.run(timeout=30)
+        at.text_area[0].set_value("Login story").run(timeout=30)
+        at.button[0].click().run(timeout=30)
+
+    assert not at.exception
+    assert any("1 of 2 acceptance criteria covered" in e.label for e in at.expander)
+    assert any("No test case covers: AC-2" in w.value for w in at.warning)
+
+
+def test_generation_without_traceability_shows_no_panel(monkeypatch):
+    at = _run_generation(monkeypatch)
+
+    assert not at.exception
+    assert not any("acceptance criteria covered" in e.label for e in at.expander)

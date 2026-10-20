@@ -10,6 +10,8 @@ read as written and still need step definitions behind them.
 """
 import re
 
+from core.result_utils import parse_covers
+
 # "1. Enter the phone number", "2) Tap Login", "- Tap Login", "* Tap Login"
 _STEP_MARKER = re.compile(r"^\s*(?:\d+\s*[.)]|[-*•])\s+")
 _TAG_UNSAFE = re.compile(r"[^\w.-]+", re.UNICODE)
@@ -60,6 +62,8 @@ def _scenario(test_case: dict, number: int) -> list[str]:
         _tag(test_case.get(key))
         for key in ("test_id", "module", "priority", "type", "platform")
     ]
+    # The acceptance criteria it covers: `--tags @AC-1` runs every scenario for one criterion.
+    tags += [_tag(criterion) for criterion in parse_covers(test_case.get("covers"))]
     tags = [tag for tag in dict.fromkeys(tags) if tag]
 
     block = []
@@ -86,7 +90,8 @@ def export_to_gherkin(result: dict, feature_name: str = "Test cases") -> str:
     of one ``.feature`` file: a single Feature with a Scenario per test case.
 
     Each scenario is tagged with its test id, module, priority, type and
-    platform, so a runner can select by any of them (``--tags @High``).
+    platform, and with the acceptance criteria it covers, so a runner can
+    select by any of them (``--tags @High``, ``--tags @AC-1``).
     """
     name = _one_line(feature_name) or "Test cases"
     test_cases = result.get("test_cases", [])

@@ -28,7 +28,9 @@ from core.result_utils import (
     build_edited_result,
     find_incomplete_rows,
     normalize_edited_records,
+    records_for_editor,
 )
+from core.traceability import build_traceability
 
 load_dotenv()
 
@@ -165,7 +167,7 @@ if "last_result" in st.session_state:
         st.subheader("✏️ Edit test cases")
         st.caption("You can edit cells directly, add or delete rows before downloading the Excel file.")
 
-        df = pd.DataFrame(test_cases)
+        df = pd.DataFrame(records_for_editor(test_cases))
         edited_df = st.data_editor(
             df,
             key="test_case_editor",
@@ -187,6 +189,11 @@ if "last_result" in st.session_state:
                 "platform": st.column_config.SelectboxColumn(
                     "Platform", options=PLATFORM_OPTIONS, required=True
                 ),
+                "covers": st.column_config.TextColumn(
+                    "Covers",
+                    help="The acceptance criteria this test case verifies, separated by commas "
+                    "(for example AC-1, AC-3).",
+                ),
             },
         )
         edited_test_cases = normalize_edited_records(edited_df.to_dict("records"))
@@ -200,6 +207,33 @@ if "last_result" in st.session_state:
             for k, v in summary.get("by_type", {}).items():
                 if v:
                     st.write(f"**{k}**: {v}")
+
+        trace = build_traceability(edited_result)
+        if trace["criteria"]:
+            uncovered = [row["id"] for row in trace["criteria"] if not row["test_ids"]]
+            unknown = [row["id"] for row in trace["criteria"] if not row["listed"]]
+            label = f"Traceability: {len(trace['criteria']) - len(uncovered)} of "                 f"{len(trace['criteria'])} acceptance criteria covered"
+            with st.expander(label, expanded=bool(uncovered)):
+                if uncovered:
+                    st.warning("No test case covers: " + ", ".join(uncovered))
+                if unknown:
+                    st.caption(
+                        "Cited by a test case but not in the criteria list: " + ", ".join(unknown)
+                    )
+                st.dataframe(
+                    pd.DataFrame(
+                        [
+                            {
+                                "Criterion": row["id"],
+                                "Description": row["text"],
+                                "Test IDs": ", ".join(row["test_ids"]),
+                            }
+                            for row in trace["criteria"]
+                        ]
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
 
         incomplete_rows = find_incomplete_rows(edited_test_cases)
         if incomplete_rows:
@@ -227,7 +261,8 @@ if "last_result" in st.session_state:
             mime="text/plain",
             disabled=export_disabled,
             help="One Scenario per test case: precondition as Given, steps as When, "
-            "expected result as Then. Tagged with test id, module, priority, type and platform.",
+            "expected result as Then. Tagged with test id, module, priority, type, platform "
+            "and the acceptance criteria it covers.",
         )
 
     summary = result.get("summary", {})

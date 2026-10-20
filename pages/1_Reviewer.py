@@ -28,6 +28,7 @@ from core.result_utils import (
     build_edited_result,
     find_incomplete_rows,
     normalize_edited_records,
+    records_for_editor,
 )
 from core.review_utils import apply_column_mapping, merge_test_cases
 
@@ -48,7 +49,9 @@ with st.sidebar:
     render_ai_settings()
 
 
-def _run_review(requirement_text: str, config: dict, test_cases: list[dict]) -> None:
+def _run_review(
+    requirement_text: str, config: dict, test_cases: list[dict], acceptance_criteria: list | None = None
+) -> None:
     try:
         client = AIClient(**ai_client_options())
     except ValueError as e:
@@ -76,6 +79,7 @@ def _run_review(requirement_text: str, config: dict, test_cases: list[dict]) -> 
     st.session_state["review_test_cases"] = test_cases
     st.session_state["review_requirement_text"] = requirement_text
     st.session_state["review_config"] = config
+    st.session_state["review_acceptance_criteria"] = list(acceptance_criteria or [])
 
 
 def _render_review_result(review: dict) -> None:
@@ -115,6 +119,7 @@ with session_tab:
                 st.session_state.get("last_requirement_text", ""),
                 st.session_state["last_config"],
                 st.session_state["last_result"]["test_cases"],
+                st.session_state["last_result"].get("acceptance_criteria", []),
             )
 
 with upload_tab:
@@ -211,7 +216,7 @@ if "review_result" in st.session_state:
 
     if st.session_state.get("generated_missing_cases"):
         st.subheader("✏️ Suggested new test cases")
-        df = pd.DataFrame(st.session_state["generated_missing_cases"])
+        df = pd.DataFrame(records_for_editor(st.session_state["generated_missing_cases"]))
         edited_df = st.data_editor(
             df,
             key="missing_cases_editor",
@@ -233,6 +238,9 @@ if "review_result" in st.session_state:
                 "platform": st.column_config.SelectboxColumn(
                     "Platform", options=PLATFORM_OPTIONS, required=True
                 ),
+                "covers": st.column_config.TextColumn(
+                    "Covers", help="Acceptance criteria this test case verifies, separated by commas."
+                ),
             },
         )
 
@@ -243,7 +251,11 @@ if "review_result" in st.session_state:
             edited_generated = normalize_edited_records(edited_df.to_dict("records"))
             merged = merge_test_cases(st.session_state["review_test_cases"], edited_generated)
             st.session_state["review_test_cases"] = merged
-            st.session_state["merged_result"] = build_edited_result({}, merged)
+            # Criteria come with the session's own set; an uploaded set has none.
+            criteria = st.session_state.get("review_acceptance_criteria", [])
+            st.session_state["merged_result"] = build_edited_result(
+                {"acceptance_criteria": criteria}, merged
+            )
             st.session_state.pop("generated_missing_cases", None)
             st.success(f"Merged. The set now has {len(merged)} test cases.")
 

@@ -11,10 +11,10 @@ from typing import Any
 from typing import Literal
 
 import anthropic
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from core.ai_providers import DEFAULT_PROVIDER, get_provider
-from core.result_utils import build_edited_result
+from core.result_utils import build_edited_result, parse_covers
 
 DEFAULT_MODEL = "claude-sonnet-5"
 
@@ -49,6 +49,23 @@ class TestCase(BaseModel):
         "Positive", "Negative", "Edge case", "UI/UX", "Compatibility", "Performance", "Security"
     ]
     platform: Literal["Web", "iOS", "Android", "API", "All"]
+    # The ids of the acceptance criteria this case verifies. Optional: a reply
+    # without it, or with a comma-separated string, is still accepted.
+    covers: list[str] = Field(default_factory=list)
+
+    @field_validator("covers", mode="before")
+    @classmethod
+    def _tolerate_missing_or_text_covers(cls, value):
+        return parse_covers(value)
+
+
+class AcceptanceCriterion(BaseModel):
+    """One acceptance criterion / requirement item, with the id test cases cite in `covers`."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    text: str
 
 
 class TestCaseSummary(BaseModel):
@@ -58,8 +75,21 @@ class TestCaseSummary(BaseModel):
 
 
 class GenerationResult(BaseModel):
+    # First, so the model lists and numbers the criteria before citing them.
+    acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
     test_cases: list[TestCase]
     summary: TestCaseSummary
+
+    @field_validator("acceptance_criteria", mode="before")
+    @classmethod
+    def _drop_criteria_without_an_id(cls, value):
+        """A missing list, or an entry with no id, is left out rather than failing the reply."""
+        if not isinstance(value, list):
+            return []
+        return [
+            item for item in value
+            if not isinstance(item, dict) or str(item.get("id") or "").strip()
+        ]
 
 
 class CoverageGap(BaseModel):

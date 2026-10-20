@@ -18,8 +18,13 @@ one config file, no code changes needed.
   humans tend to miss
 - Standardizes test case format across team members
 - Easy to extend to different projects thanks to a decoupled config system
-- Automatically retries transient errors (rate limit, connection loss)
-  from the Anthropic API
+- Automatically retries transient errors (rate limit, server error, connection loss)
+  from whichever AI provider is chosen, with increasing waits
+- Shows the tokens used on the Generator, Bug Reporter, Automation and Heal Locators
+  pages; the cost in USD is estimated for the Claude models priced in the app (see
+  [Other AI providers](#other-ai-providers))
+- Links each test case to the acceptance criteria it covers, and shows which
+  criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
 - Keeps a per-session history of generation runs to review/restore later
 - Reviews either the current generated set or an uploaded `.xlsx`/`.csv`
 - Suggests and lets the user confirm column mappings for external files
@@ -60,6 +65,7 @@ ai-testcase-generator/
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   ├── excel_exporter.py         # Exports results to .xlsx
 │   ├── gherkin_exporter.py       # Exports results to a Gherkin .feature file
+│   ├── traceability.py           # Maps acceptance criteria to the test cases covering them
 │   ├── bug_exporters.py          # Bug report Markdown/Excel export
 │   ├── bug_batch.py              # Bug reports from the failed rows of a test run
 │   ├── automation_inputs.py      # Checks Automation page input before the AI call
@@ -100,11 +106,12 @@ source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Get an Anthropic API key at https://console.anthropic.com/, then:
+Get an API key from your AI provider (for Claude, the default:
+https://console.anthropic.com/), then:
 
 ```bash
 cp .env.example .env
-# Fill in ANTHROPIC_API_KEY in the .env file
+# Fill in ANTHROPIC_API_KEY, or another provider's settings (see below), in the .env file
 ```
 
 (Or skip this step and enter the API key directly in the sidebar when
@@ -134,7 +141,9 @@ checks every reply against the schema before using it, so a model that cannot
 keep to the structure fails with a message that names the field instead of
 producing a broken table. Expect the quality of test cases, reviews and
 generated automation to vary with the model: a small local model may need
-several tries. Cost is estimated for Claude only.
+several tries. The token counts are shown for every provider; the cost in USD is
+estimated only for Claude models listed in `MODEL_PRICING` (`core/ai_client.py`,
+currently `claude-sonnet-5`) and shows as N/A for any other model.
 
 With a local server such as Ollama nothing leaves your machine.
 
@@ -153,6 +162,14 @@ Open your browser at `http://localhost:8501`.
 3. Click **Generate Test Cases**
 4. Edit the result table and download the Excel file, or a Gherkin `.feature` file with one
    `Scenario` per test case for Cucumber, Behave, SpecFlow or pytest-bdd
+
+The AI lists the requirement's acceptance criteria first, keeping ids the text already
+gives (`AC-1`, `REQ-12`...) or numbering them `AC-1`, `AC-2`..., and fills each test
+case's **Covers** column with the criteria it verifies. The **Traceability** panel under
+the table, and the **Traceability** sheet of the Excel file, list the test cases for each
+criterion and flag a criterion that has none. In the `.feature` file each scenario is
+tagged with its criteria (`@AC-1`), so `--tags @AC-1` runs one criterion's scenarios.
+Edit the Covers cells (comma-separated) to fix a link; the panel follows your edits.
 
 ### Review coverage
 

@@ -12,6 +12,10 @@ MANDATORY RULES:
 1. Check whether every distinct behavior/condition in the requirement
    has at least one corresponding test case. List anything uncovered
    as a gap.
+   A test case may list in "covers" the ids of the acceptance criteria
+   it verifies (for example "AC-1"). Use it to find criteria no test
+   case covers, but check that the steps really exercise the criterion
+   instead of trusting the list.
 2. Check whether all of the project's required test types
    (test_types_required) are represented by at least one test case.
    List any missing types in "missing_test_types".

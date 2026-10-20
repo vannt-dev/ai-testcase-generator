@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Traceability. The Generator lists the requirement's acceptance criteria, keeping the ids
+  the text gives (`AC-1`, `REQ-12`...) or numbering them `AC-1`, `AC-2`..., and each test
+  case names the criteria it covers in a new, editable **Covers** column. A panel under the
+  table shows which test cases cover each criterion and warns about criteria with none. The
+  Excel file gets a **Covers** column and a **Traceability** sheet that flags uncovered
+  criteria in red; the Gherkin file tags each scenario with its criteria (`@AC-1`). The
+  Reviewer takes the links into account when it looks for gaps. A reply without the links
+  still works, without the panel and sheet.
+- README: retries and token counts apply to every AI provider; the USD cost estimate covers
+  the Claude models priced in the app.
+
 ## 0.4.0 - 2026-10-10
 
 - Other AI providers. The sidebar of every page has an **AI provider** list: Claude (the

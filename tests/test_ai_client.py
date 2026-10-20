@@ -107,6 +107,39 @@ def test_generate_uses_structured_output_and_prompt_cache():
     assert result["usage"]["estimated_cost_usd"] == pytest.approx(0.0036)
 
 
+def test_generate_returns_the_criteria_and_the_cases_that_cover_them():
+    traced = GenerationResult.model_validate(
+        {
+            "acceptance_criteria": [{"id": "AC-1", "text": "Log in with OTP"}, {"id": "AC-2", "text": "Lockout"}],
+            "test_cases": [{**VALID_RESULT.test_cases[0].model_dump(), "covers": ["AC-1"]}],
+            "summary": {"total": 1, "by_type": {}, "open_questions": []},
+        }
+    )
+    response = SimpleNamespace(
+        parsed_output=traced, stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1)
+    )
+    client, _ = make_client(response)
+
+    result = client.generate_test_cases("system", "requirement")
+
+    assert result["acceptance_criteria"] == [
+        {"id": "AC-1", "text": "Log in with OTP"}, {"id": "AC-2", "text": "Lockout"},
+    ]
+    assert result["test_cases"][0]["covers"] == ["AC-1"]
+
+
+def test_a_reply_without_traceability_still_generates():
+    response = SimpleNamespace(
+        parsed_output=VALID_RESULT, stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1)
+    )
+    client, _ = make_client(response)
+
+    result = client.generate_test_cases("system", "requirement")
+
+    assert result["acceptance_criteria"] == []
+    assert result["test_cases"][0]["covers"] == []
+
+
 def test_unknown_model_returns_no_cost_estimate():
     response = SimpleNamespace(
         parsed_output=VALID_RESULT,

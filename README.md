@@ -20,8 +20,9 @@ one config file, no code changes needed.
 - Easy to extend to different projects thanks to a decoupled config system
 - Automatically retries transient errors (rate limit, server error, connection loss)
   from whichever AI provider is chosen, with increasing waits
-- Shows the tokens each AI call used; the cost in USD is estimated for the Claude
-  models priced in the app (see [Other AI providers](#other-ai-providers))
+- Shows the tokens used on the Generator, Bug Reporter, Automation and Heal Locators
+  pages; the cost in USD is estimated for the Claude models priced in the app (see
+  [Other AI providers](#other-ai-providers))
 - Links each test case to the acceptance criteria it covers, and shows which
   criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
 - Keeps a per-session history of generation runs to review/restore later

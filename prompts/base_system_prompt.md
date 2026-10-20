@@ -44,11 +44,29 @@ API TEST CASES (only when the project's target platforms include "api"):
 - When the target platforms list a UI platform and "api", write both kinds
   and keep them as separate test cases.
 
+TRACEABILITY:
+- First list the requirement's acceptance criteria in "acceptance_criteria",
+  one entry per criterion with its "id" and a short "text".
+- When the requirement already gives criteria or requirement items an id
+  (for example "AC-1", "AC1", "REQ-12", "FR-3.2"), keep that id exactly as
+  written. Otherwise number the criteria AC-1, AC-2, AC-3... in the order
+  they appear. When the requirement has no explicit acceptance criteria,
+  write one entry per distinct rule or behaviour it states and number those.
+- In each test case, list in "covers" the ids of the criteria it verifies
+  (one or more). Use only ids from "acceptance_criteria". A case that
+  verifies no single criterion (for example a general compatibility check)
+  gets an empty list.
+- Every criterion should be covered by at least one test case; when one
+  cannot be tested as written, ask about it in "open_questions".
+
 OUTPUT FORMAT:
 Respond with ONLY a single valid JSON object, with no markdown code fence
 and no text other than the JSON, following exactly this structure:
 
 {
+  "acceptance_criteria": [
+    {"id": "AC-1", "text": "string"}
+  ],
   "test_cases": [
     {
       "test_id": "string",
@@ -60,7 +78,8 @@ and no text other than the JSON, following exactly this structure:
       "expected_result": "string",
       "priority": "High | Medium | Low",
       "type": "Positive | Negative | Edge case | UI/UX | Compatibility | Performance | Security",
-      "platform": "Web | iOS | Android | API | All"
+      "platform": "Web | iOS | Android | API | All",
+      "covers": ["AC-1"]
     }
   ],
   "summary": {

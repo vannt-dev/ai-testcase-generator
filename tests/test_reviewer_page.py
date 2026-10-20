@@ -328,3 +328,26 @@ def test_reviewer_page_has_its_own_api_key_input(monkeypatch):
     at.text_input[0].set_value("sk-typed-on-this-page").run(timeout=30)
 
     assert at.session_state["api_key"] == "sk-typed-on-this-page"
+
+
+def test_merge_keeps_the_session_criteria_and_the_new_cases_links(monkeypatch):
+    import copy
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    _seed_session_state(at)
+    at.session_state["last_result"]["acceptance_criteria"] = [{"id": "AC-1", "text": "Log in with OTP"}]
+    at.run(timeout=30)
+    missing = copy.deepcopy(FAKE_MISSING_CASES)
+    missing["test_cases"][0]["covers"] = ["AC-1"]
+
+    with patch.object(AIClient, "review_test_cases", return_value=FAKE_REVIEW):
+        at.button(key="review_session_btn").click().run(timeout=30)
+    with patch.object(AIClient, "generate_missing_cases", return_value=missing):
+        at.button(key="generate_missing_btn").click().run(timeout=30)
+    at.button(key="merge_btn").click().run(timeout=30)
+
+    assert not at.exception
+    merged = at.session_state["merged_result"]
+    assert merged["acceptance_criteria"] == [{"id": "AC-1", "text": "Log in with OTP"}]
+    assert merged["test_cases"][1]["covers"] == ["AC-1"]

@@ -311,3 +311,42 @@ def test_api_automation_result_rejects_unknown_action_and_check_kind():
         data["tests"][0]["steps"][0][field] = value
         with pytest.raises(pydantic.ValidationError):
             ApiAutomationResult.model_validate(data)
+
+
+# ---------- Traceability fields of GenerationResult ----------
+
+def _generation(**overrides):
+    case = {
+        "test_id": "TC_1", "module": "Login", "title": "t", "precondition": "p", "steps": "s",
+        "test_data": "d", "expected_result": "e", "priority": "High", "type": "Positive", "platform": "Web",
+    }
+    case.update(overrides.pop("case", {}))
+    return {"test_cases": [case], "summary": {"total": 1, "by_type": {}, "open_questions": []}, **overrides}
+
+
+def test_generation_result_tolerates_missing_or_loose_traceability():
+    from core.ai_client import GenerationResult
+
+    missing = GenerationResult.model_validate(_generation())
+    assert missing.acceptance_criteria == [] and missing.test_cases[0].covers == []
+
+    loose = GenerationResult.model_validate(
+        _generation(
+            case={"covers": "AC-1; AC-2"},
+            acceptance_criteria=[{"id": "", "text": "no id"}, {"id": None, "text": "x"}, {"id": "AC-1", "text": "ok"}],
+        )
+    )
+    assert loose.test_cases[0].covers == ["AC-1", "AC-2"]
+    assert [criterion.id for criterion in loose.acceptance_criteria] == ["AC-1"]
+
+    nulls = GenerationResult.model_validate(_generation(case={"covers": None}, acceptance_criteria=None))
+    assert nulls.test_cases[0].covers == [] and nulls.acceptance_criteria == []
+
+
+def test_generation_schema_keeps_traceability_optional():
+    from core.ai_client import GenerationResult
+
+    schema = GenerationResult.model_json_schema()
+    assert "acceptance_criteria" not in schema.get("required", [])
+    assert "covers" not in schema["$defs"]["TestCase"].get("required", [])
+    assert list(schema["properties"])[0] == "acceptance_criteria"

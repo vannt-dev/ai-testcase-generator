@@ -217,7 +217,7 @@ def test_unticked_sections_are_not_generated(monkeypatch):
     at.run(timeout=30)
     _upload(at, "backlog.csv", b"Key,Summary\nUS-1,Login\nUS-2,Logout\n", "text/csv")
 
-    editor_key = next(key for key in at.session_state.filtered_state if key.startswith("section_picker_"))
+    editor_key = "section_picker_backlog.csv_2"  # the file name and section count
     untick_first = {"edited_rows": {0: {"generate": False}}, "added_rows": [], "deleted_rows": []}
     at.session_state[editor_key] = untick_first
     at.run(timeout=30)

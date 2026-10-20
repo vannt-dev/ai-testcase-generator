@@ -10,6 +10,14 @@
   criteria in red; the Gherkin file tags each scenario with its criteria (`@AC-1`). The
   Reviewer takes the links into account when it looks for gaps. A reply without the links
   still works, without the panel and sheet.
+- Requirement files. The Generator's new **Upload a file** tab reads a Word (`.docx`), PDF,
+  Markdown or text document, or a `.csv` backlog with one user story per row, splits it into
+  sections (headings, PDF bookmarks or rows, each under the 40,000-character limit) and
+  generates test cases for each ticked section in turn, with a progress bar. The results are
+  merged into one set with unique test ids and criterion links that stay correct across
+  sections; a failed section is listed with its error, the finished ones are kept, and
+  **Retry failed sections** runs only the failed ones. Pasting text works as before.
+- Requires the `python-docx` and `pypdf` packages (`pip install -r requirements.txt`).
 - README: retries and token counts apply to every AI provider; the USD cost estimate covers
   the Claude models priced in the app.
 

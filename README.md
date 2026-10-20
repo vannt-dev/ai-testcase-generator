@@ -23,6 +23,8 @@ one config file, no code changes needed.
 - Shows the tokens used on the Generator, Bug Reporter, Automation and Heal Locators
   pages; the cost in USD is estimated for the Claude models priced in the app (see
   [Other AI providers](#other-ai-providers))
+- Reads requirement documents (`.docx`, `.pdf`, `.md`, `.txt`) or a `.csv` backlog of
+  user stories, generates each section separately and merges the results into one set
 - Links each test case to the acceptance criteria it covers, and shows which
   criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
 - Keeps a per-session history of generation runs to review/restore later
@@ -60,6 +62,8 @@ ai-testcase-generator/
 │   ├── ai_providers.py           # The providers and what each needs (key, model, address)
 │   ├── ai_sidebar.py             # The sidebar block that chooses the provider, on every page
 │   ├── file_import.py            # Safely parses uploaded .xlsx/.csv files
+│   ├── requirement_import.py     # Reads requirement files and splits them into sections
+│   ├── batch_generation.py       # Generates per section and merges into one suite
 │   ├── prompt_builder.py         # Builds Generator/Reviewer prompts + project config
 │   ├── review_utils.py           # Column mapping and collision-safe merging
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
@@ -158,7 +162,8 @@ Open your browser at `http://localhost:8501`.
 ### Generate test cases
 
 1. Select a project in the sidebar (defaults to `example_ecommerce`)
-2. Paste a requirement/user story into the text box
+2. Paste a requirement/user story into the text box, or upload a file on the **Upload a file**
+   tab (see below)
 3. Click **Generate Test Cases**
 4. Edit the result table and download the Excel file, or a Gherkin `.feature` file with one
    `Scenario` per test case for Cucumber, Behave, SpecFlow or pytest-bdd
@@ -170,6 +175,28 @@ the table, and the **Traceability** sheet of the Excel file, list the test cases
 criterion and flag a criterion that has none. In the `.feature` file each scenario is
 tagged with its criteria (`@AC-1`), so `--tags @AC-1` runs one criterion's scenarios.
 Edit the Covers cells (comma-separated) to fix a link; the panel follows your edits.
+
+#### From a requirement file
+
+On the **Upload a file** tab, upload a Word (`.docx`), PDF, Markdown or text file, or a
+`.csv` backlog with one user story per row (Jira and Azure DevOps exports work; an
+`Issue key`/`ID` and `Summary`/`Title` column name each story). The file is split into
+sections:
+
+- Word: at its heading styles (Heading 1, Heading 2...); tables and lists are kept.
+- Markdown and text: at `#` headings.
+- PDF: at its bookmarks; a PDF without bookmarks is split by size only, and a scanned PDF
+  has no text to read.
+- CSV: one section per row.
+
+The split uses the highest heading level that occurs more than once, so a document whose
+only Heading 1 is its title splits at its Heading 2s; a section over 40,000 characters is
+cut at paragraphs. Untick the sections that need no test cases, then generate: each section
+is one AI call (up to 50 per run), with a progress bar. The results are merged into one set:
+test ids that collide get `_2`, `_3`..., criterion ids that two sections share are prefixed
+with the section (`S2.AC-1`, or the story's key such as `US-12.AC-1`), and open questions
+name their section. A section that fails is listed with its error while the others stay in
+the result; **Retry failed sections** runs only those again.
 
 ### Review coverage
 
@@ -290,6 +317,8 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   `ANTHROPIC_API_KEY` environment variable (or the chosen provider's own) on the server/secrets manager
   and hide/remove that input field, to avoid leaking the key through
   another user's session or browser logs.
+- Requirement files on the Generator are sent to the chosen AI provider section by section,
+  like pasted text; they are limited to 10 MiB, and a PDF to 500 pages.
 - Uploaded files are limited to 10 MiB, 500 data rows, 256 columns, and
   131,072 characters per field (the CSV parser may impose a lower field limit).
   Ambiguous headers, malformed rows, and lazy Excel parsing errors produce

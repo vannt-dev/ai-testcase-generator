@@ -20,8 +20,16 @@ from core.prompt_builder import (
 )
 from core.ai_client import AIClient
 from core.ai_sidebar import ai_client_options, render_ai_settings
+from core.batch_generation import MAX_SECTIONS_PER_RUN, generate_section, merge_section_results
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
+from core.requirement_import import (
+    MAX_REQUIREMENT_CHARS,
+    SUPPORTED_SUFFIXES,
+    RequirementImportError,
+    Section,
+    read_requirement_file,
+)
 from core.version import __version__
 from core.result_utils import (
     PLATFORM_OPTIONS,
@@ -37,9 +45,6 @@ load_dotenv()
 st.set_page_config(page_title="AI Test Case Generator", page_icon="🧪", layout="wide")
 
 CONFIGS_DIR = Path("configs")
-# Cap requirement length to avoid exceeding the model's context/token limit
-# with a confusing error — ~40,000 characters is roughly ~10,000 tokens.
-MAX_REQUIREMENT_CHARS = 40000
 MAX_HISTORY_ENTRIES = 10
 
 st.title("🧪 AI Test Case Generator")
@@ -93,13 +98,171 @@ with st.sidebar:
                     st.rerun()
 
 # ---------- Main ----------
-requirement_text = st.text_area(
-    "📋 Paste your Requirement / User Story / Jira ticket here",
-    height=250,
-    placeholder="E.g.: As a user, I want to log in with my phone number and OTP so that...",
-)
+def _store_result(result: dict, config: dict, requirement_text: str, excerpt: str) -> None:
+    """Make `result` the current set and add it to this session's history."""
+    st.session_state.pop("test_case_editor", None)
+    st.session_state["last_result"] = result
+    st.session_state["last_project_name"] = config["project_name"]
+    st.session_state["last_config"] = config
+    st.session_state["last_requirement_text"] = requirement_text
 
-generate_btn = st.button("🚀 Generate Test Cases", type="primary")
+    history = st.session_state.setdefault("history", [])
+    history.append(
+        {
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "project_name": config["project_name"],
+            "requirement_excerpt": excerpt,
+            "test_case_count": len(result.get("test_cases", [])),
+            "result": result,
+            "config": config,
+            "requirement_text": requirement_text,
+        }
+    )
+    del history[:-MAX_HISTORY_ENTRIES]
+
+
+def _new_client() -> AIClient | None:
+    try:
+        return AIClient(**ai_client_options())
+    except ValueError as e:
+        st.error(str(e))
+        return None
+
+
+def _run_sections(batch: dict, keys: list[str]) -> None:
+    """
+    Generate the given sections of the uploaded file one by one. Each result
+    or error is kept in the batch as soon as it arrives, so a failure or an
+    interrupted run never loses a finished section; the merged suite then
+    becomes the current set.
+    """
+    client = _new_client()
+    if client is None:
+        return
+    config = batch["config"]
+    system_prompt = build_system_prompt(config)
+    prompt_warning = estimate_prompt_size_warning(system_prompt)
+    if prompt_warning:
+        st.warning(prompt_warning)
+
+    sections = [Section(**section) for section in batch["sections"]]
+    chosen = [section for section in sections if section.key in keys]
+    progress = st.progress(0.0, text="Starting...")
+    start_time = time.time()
+    for number, section in enumerate(chosen, start=1):
+        progress.progress(
+            (number - 1) / len(chosen), text=f"Section {number} of {len(chosen)}: {section.title}"
+        )
+        result, error = generate_section(
+            client, system_prompt, section, number, len(chosen), batch["source_name"]
+        )
+        if error:
+            batch["errors"][section.key] = error
+        else:
+            batch["results"][section.key] = result
+            batch["errors"].pop(section.key, None)
+    elapsed = time.time() - start_time
+    progress.progress(1.0, text=f"Done in {elapsed:.1f}s")
+
+    if not batch["results"]:
+        st.error("No section produced test cases. See the errors below.")
+        return
+    merged = merge_section_results(sections, batch["results"])
+    done = [section for section in sections if section.key in batch["results"]]
+    requirement = "\n\n".join(f"{section.title}\n{section.text}" for section in done)
+    _store_result(
+        merged,
+        config,
+        requirement,
+        f"{batch['source_name']}: {len(done)} of {len(sections)} section(s)",
+    )
+
+
+paste_tab, upload_tab = st.tabs(["📋 Paste text", "📄 Upload a file"])
+
+with paste_tab:
+    requirement_text = st.text_area(
+        "📋 Paste your Requirement / User Story / Jira ticket here",
+        height=250,
+        placeholder="E.g.: As a user, I want to log in with my phone number and OTP so that...",
+    )
+
+    generate_btn = st.button("🚀 Generate Test Cases", type="primary", key="generate_btn")
+
+with upload_tab:
+    uploaded = st.file_uploader(
+        "Requirement document (.docx, .pdf, .md, .txt) or a backlog of user stories (.csv)",
+        type=list(SUPPORTED_SUFFIXES),
+        key="requirement_file",
+        help="Documents are split at their headings, a CSV backlog one story per row. Each "
+        "section is sent to the AI on its own and the results are merged into one set.",
+    )
+    sections: list[Section] = []
+    if uploaded is not None:
+        try:
+            sections = read_requirement_file(uploaded, MAX_REQUIREMENT_CHARS)
+        except RequirementImportError as e:
+            st.error(str(e))
+
+    if sections:
+        st.caption(
+            f"{len(sections)} section(s) found in {uploaded.name}. Untick the ones that need no "
+            f"test cases (table of contents, revision history...); up to {MAX_SECTIONS_PER_RUN} "
+            "per run, one AI call each."
+        )
+        picked = st.data_editor(
+            pd.DataFrame(
+                [
+                    {"generate": True, "section": section.title, "characters": len(section.text)}
+                    for section in sections
+                ]
+            ),
+            key=f"section_picker_{uploaded.name}_{len(sections)}",
+            width="stretch",
+            hide_index=True,
+            disabled=["section", "characters"],
+            column_config={
+                "generate": st.column_config.CheckboxColumn("Generate"),
+                "section": st.column_config.TextColumn("Section"),
+                "characters": st.column_config.NumberColumn("Characters"),
+            },
+        )
+        chosen_keys = [
+            section.key for section, keep in zip(sections, picked["generate"].tolist()) if keep
+        ]
+        too_many = len(chosen_keys) > MAX_SECTIONS_PER_RUN
+        if too_many:
+            st.warning(
+                f"{len(chosen_keys)} sections are ticked; generate at most {MAX_SECTIONS_PER_RUN} "
+                "per run."
+            )
+        if st.button(
+            f"🚀 Generate test cases for {len(chosen_keys)} section(s)",
+            type="primary",
+            key="generate_sections_btn",
+            disabled=not chosen_keys or too_many,
+        ):
+            st.session_state["section_batch"] = {
+                "source_name": uploaded.name,
+                "sections": [vars(section).copy() for section in sections],
+                "config": config,
+                "results": {},
+                "errors": {},
+            }
+            _run_sections(st.session_state["section_batch"], chosen_keys)
+
+    batch = st.session_state.get("section_batch")
+    if batch and batch["errors"]:
+        titles = {section["key"]: section["title"] for section in batch["sections"]}
+        st.error(
+            f"{len(batch['errors'])} section(s) of {batch['source_name']} failed; the others are "
+            "kept in the result."
+        )
+        for key, error in batch["errors"].items():
+            st.markdown(f"- **{titles.get(key, key)}**: {error}")
+        if st.button("🔁 Retry failed sections", key="retry_sections_btn"):
+            _run_sections(batch, list(batch["errors"]))
+            st.rerun()
 
 if generate_btn:
     if not requirement_text.strip():
@@ -109,15 +272,13 @@ if generate_btn:
     if len(requirement_text) > MAX_REQUIREMENT_CHARS:
         st.error(
             f"Requirement is too long ({len(requirement_text):,} characters, limit "
-            f"{MAX_REQUIREMENT_CHARS:,}). Split it into smaller parts and generate "
-            "test cases for each part separately."
+            f"{MAX_REQUIREMENT_CHARS:,}). Split it into smaller parts, or save it as a file "
+            "and use **Upload a file**, which generates each section separately."
         )
         st.stop()
 
-    try:
-        client = AIClient(**ai_client_options())
-    except ValueError as e:
-        st.error(str(e))
+    client = _new_client()
+    if client is None:
         st.stop()
 
     system_prompt = build_system_prompt(config)
@@ -136,25 +297,8 @@ if generate_btn:
         elapsed = time.time() - start_time
         status.update(label=f"Done in {elapsed:.1f}s", state="complete")
 
-    st.session_state.pop("test_case_editor", None)
-    st.session_state["last_result"] = result
-    st.session_state["last_project_name"] = config["project_name"]
-    st.session_state["last_config"] = config
-    st.session_state["last_requirement_text"] = requirement_text
-
-    history = st.session_state.setdefault("history", [])
-    history.append(
-        {
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "project_name": config["project_name"],
-            "requirement_excerpt": requirement_text.strip()[:200],
-            "test_case_count": len(result.get("test_cases", [])),
-            "result": result,
-            "config": config,
-            "requirement_text": requirement_text,
-        }
-    )
-    del history[:-MAX_HISTORY_ENTRIES]
+    st.session_state.pop("section_batch", None)
+    _store_result(result, config, requirement_text, requirement_text.strip()[:200])
 
 # ---------- Display results ----------
 if "last_result" in st.session_state:

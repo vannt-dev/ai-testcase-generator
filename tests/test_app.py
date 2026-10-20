@@ -150,3 +150,96 @@ def test_generation_without_traceability_shows_no_panel(monkeypatch):
 
     assert not at.exception
     assert not any("acceptance criteria covered" in e.label for e in at.expander)
+
+
+SPEC_MD = b"# Shop\n\n## Login\n\nOTP login.\n\n## Checkout\n\nPay by card.\n"
+
+
+def _section_result(test_id, question):
+    import copy
+
+    result = copy.deepcopy(FAKE_RESULT)
+    result["acceptance_criteria"] = [{"id": "AC-1", "text": question}]
+    result["test_cases"][0]["test_id"] = test_id
+    result["test_cases"][0]["covers"] = ["AC-1"]
+    result["summary"]["open_questions"] = [question]
+    return result
+
+
+def _upload(at, name="spec.md", data=SPEC_MD, mime="text/markdown"):
+    at.file_uploader(key="requirement_file").upload(name, data, mime).run(timeout=30)
+
+
+def test_uploaded_file_generates_per_section_and_keeps_finished_sections_on_error(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    requests = []
+
+    def first_ok_then_fail(system_prompt, requirement_text):
+        requests.append(requirement_text)
+        if len(requests) == 1:
+            return _section_result("TC_001", "Login question")
+        raise ValueError("Rate limit exceeded")
+
+    at = AppTest.from_file(str(APP_PATH))
+    at.run(timeout=30)
+    _upload(at)
+    assert at.button(key="generate_sections_btn").label == "🚀 Generate test cases for 2 section(s)"
+
+    with patch.object(AIClient, "generate_test_cases", side_effect=first_ok_then_fail):
+        at.button(key="generate_sections_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert len(requests) == 2
+    assert "Login" in requests[0] and "OTP login." in requests[0]
+    assert "Checkout" in requests[1] and "OTP login." not in requests[1]
+    result = at.session_state["last_result"]
+    assert [tc["test_id"] for tc in result["test_cases"]] == ["TC_001"]
+    assert any("1 section(s) of spec.md failed" in e.value for e in at.error)
+    assert any("Rate limit exceeded" in m.value for m in at.markdown)
+    assert at.session_state["history"][-1]["requirement_excerpt"] == "spec.md: 1 of 2 section(s)"
+
+    with patch.object(AIClient, "generate_test_cases", return_value=_section_result("TC_001", "Card question")):
+        at.button(key="retry_sections_btn").click().run(timeout=30)
+
+    assert not at.exception
+    merged = at.session_state["last_result"]
+    assert [tc["test_id"] for tc in merged["test_cases"]] == ["TC_001", "TC_001_2"]
+    assert [c["id"] for c in merged["acceptance_criteria"]] == ["S1.AC-1", "S2.AC-1"]
+    assert [tc["covers"] for tc in merged["test_cases"]] == [["S1.AC-1"], ["S2.AC-1"]]
+    assert merged["summary"]["open_questions"] == ["[Login] Login question", "[Checkout] Card question"]
+    assert not at.session_state["section_batch"]["errors"]
+    assert at.session_state["last_requirement_text"].startswith("Login\n")
+
+
+def test_unticked_sections_are_not_generated(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(APP_PATH))
+    at.run(timeout=30)
+    _upload(at, "backlog.csv", b"Key,Summary\nUS-1,Login\nUS-2,Logout\n", "text/csv")
+
+    editor_key = "section_picker_backlog.csv_2"  # the file name and section count
+    untick_first = {"edited_rows": {0: {"generate": False}}, "added_rows": [], "deleted_rows": []}
+    at.session_state[editor_key] = untick_first
+    at.run(timeout=30)
+    assert at.button(key="generate_sections_btn").label == "🚀 Generate test cases for 1 section(s)"
+
+    # AppTest does not model the table's edits, so they are set again for the click's run.
+    at.session_state[editor_key] = untick_first
+    with patch.object(AIClient, "generate_test_cases", return_value=_section_result("TC_9", "q")) as mocked:
+        at.button(key="generate_sections_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert mocked.call_count == 1
+    assert "US-2" in mocked.call_args.args[1]
+    assert at.session_state["last_result"]["acceptance_criteria"] == [{"id": "AC-1", "text": "q"}]
+
+
+def test_an_unreadable_upload_shows_an_error_and_no_generate_button(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(APP_PATH))
+    at.run(timeout=30)
+    _upload(at, "spec.docx", b"not a zip", "application/octet-stream")
+
+    assert not at.exception
+    assert any("Could not read the Word file" in e.value for e in at.error)
+    assert not [b for b in at.button if b.key == "generate_sections_btn"]

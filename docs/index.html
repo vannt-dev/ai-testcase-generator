@@ -63,7 +63,7 @@
   header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
   .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.05rem;}
   .brand .emoji{font-size:1.4rem;}
-  .top-links{display:flex;gap:18px;font-size:.92rem;font-weight:600;}
+  .top-links{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:.92rem;font-weight:600;}
   .top-links a{text-decoration:none;}
   .top-links a:hover{text-decoration:underline;}
 
@@ -191,8 +191,8 @@
   <div class="wrap">
     <h1>Generate test cases.<br>Review the coverage.</h1>
     <p class="lead">
-      Turn a requirement or Jira ticket into executable test cases, or review an existing
-      set for coverage gaps and duplicates. Fill the missing cases, edit the merged set,
+      Turn a requirement, a Jira ticket or a whole requirement document into executable test
+      cases, or review an existing set for coverage gaps and duplicates. Fill the missing cases, edit the merged set,
       then export it to Excel ready for testers. From there, write bug reports from rough
       notes or a failed test run, turn test cases into Playwright tests, and repair the
       locators a page change broke.
@@ -227,7 +227,7 @@
       <div class="step">
         <div class="num">2</div>
         <h3>Provide cases and requirement</h3>
-        <p>Generate from a user story, reuse the current session, or upload an external .xlsx/.csv test set.</p>
+        <p>Paste a user story or upload a .docx, .pdf, .md, .txt or .csv requirement file (generated section by section), reuse the current session, or upload an external .xlsx/.csv test set.</p>
       </div>
       <div class="step">
         <div class="num">3</div>
@@ -372,6 +372,11 @@
         <p>Scores requirement coverage and reports missing test types, concrete gaps, and likely duplicate cases.</p>
       </div>
       <div class="feature">
+        <span class="icon">🔗</span>
+        <h3>Traceability</h3>
+        <p>Each test case names the acceptance criteria it covers in a <strong>Covers</strong> column; a panel and a Traceability sheet in the Excel file flag criteria with no test.</p>
+      </div>
+      <div class="feature">
         <span class="icon">📤</span>
         <h3>External file review</h3>
         <p>Imports .xlsx/.csv test sets and suggests a column mapping that the tester confirms before review.</p>
@@ -384,7 +389,7 @@
       <div class="feature">
         <span class="icon">🥒</span>
         <h3>Gherkin export</h3>
-        <p>Downloads the test cases as a .feature file: one <code>Scenario</code> each, tagged with its test id, module, priority and type. No AI call is made for it.</p>
+        <p>Downloads the test cases as a .feature file: one <code>Scenario</code> each, tagged with its test id, module, priority, type and the criteria it covers (<code>@AC-1</code>). No AI call is made for it.</p>
       </div>
       <div class="feature">
         <span class="icon">🔀</span>

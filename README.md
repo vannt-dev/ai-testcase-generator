@@ -4,12 +4,15 @@
 
 **[Live demo](https://ai-testcase-gen.streamlit.app/)** · **[Demo page](https://vannt-dev.github.io/ai-testcase-generator/)**
 
-A tool that helps **manual testers** generate test cases from a
-requirement/user story, review an existing test set for coverage gaps and
-duplicates, generate the missing cases, and export a ready-to-use Excel file.
-It uses Claude by default, can use OpenAI, Google Gemini or a local model
-server instead, and is designed to be **applicable to any project** — just add
-one config file, no code changes needed.
+A free, open-source (MIT) tool that helps **manual testers** write test cases
+from a requirement or user story and export them to an **Excel file** they can
+work from directly: one row per test case with steps, test data, expected
+result and priority. You use **your own API key** for Claude (the default),
+OpenAI or Google Gemini, or a **local model server** such as Ollama or LM
+Studio, which needs no key. It can also review an existing test set for
+coverage gaps and duplicates and generate the missing cases, and it is designed
+to be **applicable to any project** — just add one config file, no code changes
+needed.
 
 ## Why use this tool
 

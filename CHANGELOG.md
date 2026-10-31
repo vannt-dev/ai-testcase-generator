@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 - 2026-11-01
 
 - The generation history now survives a restart. Each result is saved as a JSON file in a
   Git-ignored `history/` folder, which keeps the newest 50 runs. The sidebar list, now called

@@ -87,6 +87,7 @@ def test_ai_error_is_shown(monkeypatch):
         at.button(key="write_bug_btn").click().run(timeout=30)
 
     assert any("Invalid API key." in e.value for e in at.error)
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
     assert "bug_draft" not in at.session_state
 
 

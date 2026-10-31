@@ -71,6 +71,17 @@ def test_invalid_file_shows_an_error(monkeypatch):
     assert at.button(key="heal_btn").disabled is True
 
 
+def test_an_ai_error_opens_the_status_box(monkeypatch):
+    at = _app(monkeypatch)
+    _fill(at)
+    with patch.object(AIClient, "heal_locators", side_effect=ValueError("Invalid API key.")):
+        at.button(key="heal_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert any("Invalid API key." in error.value for error in at.error)
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
+
+
 def test_heal_shows_fixes_diff_and_download(monkeypatch):
     at = _app(monkeypatch)
     _fill(at)

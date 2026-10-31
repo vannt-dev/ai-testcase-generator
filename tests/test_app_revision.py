@@ -118,6 +118,8 @@ def test_an_ai_error_is_shown_and_the_table_is_untouched(monkeypatch):
 
     assert not at.exception
     assert any("Invalid API key." in error.value and "not changed" in error.value for error in at.error)
+    # The error sits inside the status box; it must open, or the "not changed" line stays hidden.
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
     assert "pending_revision" not in at.session_state
     assert [case["title"] for case in at.session_state["last_result"]["test_cases"]] == [
         "Successful login", "Wrong OTP",

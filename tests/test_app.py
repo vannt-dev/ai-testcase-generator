@@ -47,6 +47,20 @@ def _run_generation(monkeypatch, requirement="As a user, I want to log in with O
     return at
 
 
+def test_an_ai_error_on_generation_opens_the_status_box(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    with patch.object(AIClient, "generate_test_cases", side_effect=ValueError("Invalid API key.")):
+        at = AppTest.from_file(str(APP_PATH))
+        at.run(timeout=30)
+        at.text_area[0].set_value("As a user, I want to log in with OTP").run(timeout=30)
+        at.button[0].click().run(timeout=30)
+
+    assert not at.exception
+    assert any("Invalid API key." in error.value for error in at.error)
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
+    assert "last_result" not in at.session_state
+
+
 def test_generate_flow_shows_editor_and_no_exception(monkeypatch):
     at = _run_generation(monkeypatch)
 

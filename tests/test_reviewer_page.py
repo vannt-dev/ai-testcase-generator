@@ -182,6 +182,40 @@ FAKE_MISSING_CASES = {
 }
 
 
+def _error_status_is_open(at) -> bool:
+    return [status.proto.expanded for status in at.status if status.state == "error"] == [True]
+
+
+def test_an_ai_error_on_review_opens_the_status_box(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    _seed_session_state(at)
+    at.run(timeout=30)
+
+    with patch.object(AIClient, "review_test_cases", side_effect=ValueError("Invalid API key.")):
+        at.button(key="review_session_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert any("Invalid API key." in error.value for error in at.error)
+    assert _error_status_is_open(at)
+
+
+def test_an_ai_error_on_missing_cases_opens_the_status_box(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    at = AppTest.from_file(str(PAGE_PATH))
+    _seed_session_state(at)
+    at.run(timeout=30)
+    with patch.object(AIClient, "review_test_cases", return_value=FAKE_REVIEW):
+        at.button(key="review_session_btn").click().run(timeout=30)
+
+    with patch.object(AIClient, "generate_missing_cases", side_effect=ValueError("rate limited")):
+        at.button(key="generate_missing_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert any("rate limited" in error.value for error in at.error)
+    assert _error_status_is_open(at)
+
+
 def test_generate_missing_cases_and_merge(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     at = AppTest.from_file(str(PAGE_PATH))

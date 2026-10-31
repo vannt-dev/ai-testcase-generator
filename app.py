@@ -3,6 +3,7 @@ AI Test Case Generator — MVP UI (Streamlit)
 
 Run: streamlit run app.py
 """
+import os
 import time
 from datetime import datetime
 
@@ -24,6 +25,7 @@ from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.batch_generation import MAX_SECTIONS_PER_RUN, generate_section, merge_section_results
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
+from core.history_store import clear_entries, load_entries, save_entry
 from core.requirement_import import (
     MAX_REQUIREMENT_CHARS,
     SUPPORTED_SUFFIXES,
@@ -47,7 +49,10 @@ load_dotenv()
 st.set_page_config(page_title="AI Test Case Generator", page_icon="🧪", layout="wide")
 
 CONFIGS_DIR = Path("configs")
-MAX_HISTORY_ENTRIES = 10
+# Each generation is saved as a JSON file here, so the history survives a restart.
+HISTORY_DIR = Path(os.environ.get("TESTCASE_HISTORY_DIR") or Path(__file__).parent / "history")
+MAX_HISTORY_ENTRIES = 10  # shown in the sidebar
+MAX_STORED_HISTORY_ENTRIES = 50  # kept on disk
 # Selected cases per revision, so the rewrite and any new cases fit in one reply.
 MAX_REVISION_CASES = 20
 
@@ -85,10 +90,20 @@ with st.sidebar:
     with st.expander("View config details"):
         st.json(config)
 
-    history = st.session_state.setdefault("history", [])
-    if history:
+    if "history" not in st.session_state:
+        # A new session starts from the history saved by earlier ones.
+        loaded, load_warnings = load_entries(HISTORY_DIR, MAX_HISTORY_ENTRIES)
+        st.session_state["history"] = loaded
+        st.session_state["history_load_warnings"] = load_warnings
+    history = st.session_state["history"]
+    history_warnings = list(st.session_state.get("history_load_warnings", []))
+    if st.session_state.get("history_file_warning"):
+        history_warnings.append(st.session_state["history_file_warning"])
+    if history or history_warnings:
         st.divider()
-        st.subheader("🕘 This session's history")
+        st.subheader("🕘 History")
+        for warning in history_warnings:
+            st.warning(warning)
         for index, entry in reversed(list(enumerate(history))):
             label = (
                 f"{entry['timestamp']} · {entry['project_name']} · "
@@ -96,7 +111,9 @@ with st.sidebar:
             )
             with st.expander(label):
                 st.caption(entry["requirement_excerpt"])
-                if st.button("↩️ Restore this result", key=f"restore_history_{index}"):
+                if st.button(
+                    "↩️ Restore this result", key=f"restore_history_{entry.get('id', index)}"
+                ):
                     _clear_result_widgets()
                     st.session_state["last_result"] = entry["result"]
                     st.session_state["last_project_name"] = entry["project_name"]
@@ -107,6 +124,30 @@ with st.sidebar:
                     st.session_state["last_requirement_text"] = entry["requirement_text"]
                     st.rerun()
 
+        if not st.session_state.get("confirm_clear_history"):
+            if st.button("🗑️ Clear history", key="clear_history"):
+                st.session_state["confirm_clear_history"] = True
+                st.rerun()
+        else:
+            st.warning("Delete every saved history entry? This can't be undone.")
+            confirm_column, cancel_column = st.columns(2)
+            if confirm_column.button("Yes, delete all", key="clear_history_confirm", type="primary"):
+                st.session_state.pop("confirm_clear_history", None)
+                try:
+                    clear_entries(HISTORY_DIR)
+                except OSError as error:
+                    st.session_state["history_file_warning"] = (
+                        f"Couldn't delete the history files in {HISTORY_DIR}: {error}"
+                    )
+                else:
+                    st.session_state["history"] = []
+                    st.session_state["history_load_warnings"] = []
+                    st.session_state.pop("history_file_warning", None)
+                st.rerun()
+            if cancel_column.button("Cancel", key="clear_history_cancel"):
+                st.session_state.pop("confirm_clear_history", None)
+                st.rerun()
+
 # ---------- Main ----------
 def _store_result(result: dict, config: dict, requirement_text: str, excerpt: str) -> None:
     """Make `result` the current set and add it to this session's history."""
@@ -116,18 +157,28 @@ def _store_result(result: dict, config: dict, requirement_text: str, excerpt: st
     st.session_state["last_config"] = config
     st.session_state["last_requirement_text"] = requirement_text
 
+    entry = {
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "project_name": config["project_name"],
+        "requirement_excerpt": excerpt,
+        "test_case_count": len(result.get("test_cases", [])),
+        "result": result,
+        "config": config,
+        "requirement_text": requirement_text,
+    }
+    try:
+        entry_id = save_entry(HISTORY_DIR, entry, keep=MAX_STORED_HISTORY_ENTRIES)
+    except OSError as error:
+        # The result is still shown and kept for this session; it just won't survive a restart.
+        message = f"Couldn't save this result to the history folder {HISTORY_DIR}: {error}"
+        st.session_state["history_file_warning"] = message
+        st.warning(message)
+    else:
+        entry["id"] = entry_id
+        st.session_state.pop("history_file_warning", None)
+
     history = st.session_state.setdefault("history", [])
-    history.append(
-        {
-            "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "project_name": config["project_name"],
-            "requirement_excerpt": excerpt,
-            "test_case_count": len(result.get("test_cases", [])),
-            "result": result,
-            "config": config,
-            "requirement_text": requirement_text,
-        }
-    )
+    history.append(entry)
     del history[:-MAX_HISTORY_ENTRIES]
 
 

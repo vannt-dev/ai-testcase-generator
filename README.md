@@ -30,7 +30,7 @@ needed.
   user stories, generates each section separately and merges the results into one set
 - Links each test case to the acceptance criteria it covers, and shows which
   criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
-- Keeps a per-session history of generation runs to review/restore later
+- Keeps a history of generation runs on disk, so you can restore one after a restart
 - Reviews either the current generated set or an uploaded `.xlsx`/`.csv`
 - Suggests and lets the user confirm column mappings for external files
 - Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
@@ -54,7 +54,7 @@ Project-aware test cases, coverage reports, bug reports and Playwright web and A
 
 ```
 ai-testcase-generator/
-├── app.py                       # Generator page and session history
+├── app.py                       # Generator page and its history sidebar
 ├── pages/
 │   ├── 1_Reviewer.py            # Coverage review, gap generation, merge/export
 │   ├── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
@@ -74,6 +74,7 @@ ai-testcase-generator/
 │   ├── excel_exporter.py         # Exports results to .xlsx
 │   ├── gherkin_exporter.py       # Exports results to a Gherkin .feature file
 │   ├── traceability.py           # Maps acceptance criteria to the test cases covering them
+│   ├── history_store.py          # Saves, loads and clears the generation history files
 │   ├── bug_exporters.py          # Bug report Markdown/Excel export
 │   ├── bug_batch.py              # Bug reports from the failed rows of a test run
 │   ├── automation_inputs.py      # Checks Automation page input before the AI call
@@ -181,6 +182,13 @@ criterion and flag a criterion that has none. In the `.feature` file each scenar
 tagged with its criteria (`@AC-1`), so `--tags @AC-1` runs one criterion's scenarios.
 Edit the Covers cells (comma-separated) to fix a link; the panel follows your edits.
 
+Each result is also saved to the **History** list in the sidebar, which keeps the newest 10.
+**Restore** brings a result back with its project config and requirement, so the Reviewer
+page checks it against them. The history is saved as one JSON file per run in the
+`history/` folder, which keeps the newest 50 and is ignored by Git. It survives a restart of
+the app. A file that can't be read is skipped with a warning. **Clear history** deletes the
+files after you confirm. To keep the history somewhere else, set `TESTCASE_HISTORY_DIR`.
+
 #### Revise selected test cases
 
 To have the AI rework some cases instead of editing them by hand, open **Revise selected
@@ -193,7 +201,7 @@ in the set uses (a clash becomes `_2`, `_3`...) and are placed after the last se
 The other cases are not sent and stay exactly as they were.
 
 The proposal is shown before and after, with any questions the AI raised. **Accept
-revision** puts it in the table and adds it to the session history, so **Restore** on the
+revision** puts it in the table and adds it to the history, so **Restore** on the
 earlier entry undoes it; **Discard revision** drops it. Nothing changes until you accept: an
 AI error, or a reply that leaves out, renames or repeats a selected case, is shown as an
 error and the table stays as it was. Edit the table after revising and the proposal can no
@@ -342,6 +350,10 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   `ANTHROPIC_API_KEY` environment variable (or the chosen provider's own) on the server/secrets manager
   and hide/remove that input field, to avoid leaking the key through
   another user's session or browser logs.
+- The generation history in `history/` holds each run's requirement text, project config
+  and test cases as plain, unencrypted JSON. Anyone who can read the folder can read them.
+  On a shared server, every user's runs go to the same folder. Use **Clear history** or
+  delete the folder to remove them.
 - Requirement files on the Generator are sent to the chosen AI provider section by section,
   like pasted text; they are limited to 10 MiB, and a PDF to 500 pages.
 - Uploaded files are limited to 10 MiB, 500 data rows, 256 columns, and

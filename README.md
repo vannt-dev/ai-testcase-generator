@@ -69,6 +69,7 @@ ai-testcase-generator/
 │   ├── batch_generation.py       # Generates per section and merges into one suite
 │   ├── prompt_builder.py         # Builds Generator/Reviewer prompts + project config
 │   ├── review_utils.py           # Column mapping and collision-safe merging
+│   ├── revision.py               # Checks and merges a revision of selected test cases
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   ├── excel_exporter.py         # Exports results to .xlsx
 │   ├── gherkin_exporter.py       # Exports results to a Gherkin .feature file
@@ -88,6 +89,7 @@ ai-testcase-generator/
 ├── prompts/
 │   ├── base_system_prompt.md     # Generates complete test cases
 │   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
+│   ├── revise_system_prompt.md   # Rewrites selected test cases from a tester's note
 │   ├── column_mapping_system_prompt.md
 │   ├── bug_report_system_prompt.md # Writes one bug report from notes
 │   ├── run_column_mapping_system_prompt.md
@@ -178,6 +180,26 @@ the table, and the **Traceability** sheet of the Excel file, list the test cases
 criterion and flag a criterion that has none. In the `.feature` file each scenario is
 tagged with its criteria (`@AC-1`), so `--tags @AC-1` runs one criterion's scenarios.
 Edit the Covers cells (comma-separated) to fix a link; the panel follows your edits.
+
+#### Revise selected test cases
+
+To have the AI rework some cases instead of editing them by hand, open **Revise selected
+test cases with AI** under the table, pick the test ids (up to 20), and write what should
+change, for example "add negative cases for an empty email" or "steps too vague, split
+step 3". Click **Revise selected**: the AI gets those cases as they are in the table (with
+your edits), the requirement and the acceptance criteria, and rewrites only them. Every
+selected case comes back under its own test id; new cases the note asks for get ids no case
+in the set uses (a clash becomes `_2`, `_3`...) and are placed after the last selected case.
+The other cases are not sent and stay exactly as they were.
+
+The proposal is shown before and after, with any questions the AI raised. **Accept
+revision** puts it in the table and adds it to the session history, so **Restore** on the
+earlier entry undoes it; **Discard revision** drops it. Nothing changes until you accept: an
+AI error, or a reply that leaves out, renames or repeats a selected case, is shown as an
+error and the table stays as it was. Edit the table after revising and the proposal can no
+longer be accepted; discard it and revise again. To delete a case, delete its row. This
+works with every AI provider in the sidebar; a requirement longer than 40,000 characters
+(a large uploaded file) is cut to that length for the revision.
 
 #### From a requirement file
 

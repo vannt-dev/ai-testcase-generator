@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from core.prompt_builder import (
+    REVISE_PROMPT_PATH,
     ProjectConfigError,
     build_system_prompt,
     estimate_prompt_size_warning,
@@ -30,6 +31,7 @@ from core.requirement_import import (
     Section,
     read_requirement_file,
 )
+from core.revision import apply_revision, revisable_ids
 from core.version import __version__
 from core.result_utils import (
     PLATFORM_OPTIONS,
@@ -46,6 +48,14 @@ st.set_page_config(page_title="AI Test Case Generator", page_icon="🧪", layout
 
 CONFIGS_DIR = Path("configs")
 MAX_HISTORY_ENTRIES = 10
+# Selected cases per revision, so the rewrite and any new cases fit in one reply.
+MAX_REVISION_CASES = 20
+
+def _clear_result_widgets() -> None:
+    """Forget the table edits and any revision of the set that is about to be replaced."""
+    for key in ("test_case_editor", "pending_revision", "revise_selection", "revise_note"):
+        st.session_state.pop(key, None)
+
 
 st.title("🧪 AI Test Case Generator")
 st.caption("Automatically generate test cases from a requirement — built for manual testers")
@@ -87,7 +97,7 @@ with st.sidebar:
             with st.expander(label):
                 st.caption(entry["requirement_excerpt"])
                 if st.button("↩️ Restore this result", key=f"restore_history_{index}"):
-                    st.session_state.pop("test_case_editor", None)
+                    _clear_result_widgets()
                     st.session_state["last_result"] = entry["result"]
                     st.session_state["last_project_name"] = entry["project_name"]
                     # Restore the config/requirement too, so the Reviewer page
@@ -100,7 +110,7 @@ with st.sidebar:
 # ---------- Main ----------
 def _store_result(result: dict, config: dict, requirement_text: str, excerpt: str) -> None:
     """Make `result` the current set and add it to this session's history."""
-    st.session_state.pop("test_case_editor", None)
+    _clear_result_widgets()
     st.session_state["last_result"] = result
     st.session_state["last_project_name"] = config["project_name"]
     st.session_state["last_config"] = config
@@ -176,6 +186,132 @@ def _run_sections(batch: dict, keys: list[str]) -> None:
         requirement,
         f"{batch['source_name']}: {len(done)} of {len(sections)} section(s)",
     )
+
+
+def _revise_selected(result: dict, test_cases: list[dict], selected_ids: list[str], note: str) -> None:
+    """
+    Ask the AI to rewrite the selected cases as the note says and keep the
+    merged set as a proposal. Any error is shown and leaves the table as it is.
+    """
+    client = _new_client()
+    if client is None:
+        return
+    selected_cases = [case for case in test_cases if case["test_id"] in selected_ids]
+    system_prompt = build_system_prompt(st.session_state["last_config"], REVISE_PROMPT_PATH)
+    with st.status("AI is revising the selected test cases...", expanded=False) as status:
+        try:
+            reply = client.revise_test_cases(
+                system_prompt,
+                st.session_state.get("last_requirement_text", ""),
+                result.get("acceptance_criteria", []),
+                selected_cases,
+                note,
+                [case["test_id"] for case in test_cases if case["test_id"]],
+                MAX_REQUIREMENT_CHARS,
+            )
+            outcome = apply_revision(test_cases, selected_ids, reply)
+        except ValueError as e:
+            status.update(label=f"Error: {e}", state="error")
+            st.error(f"Could not revise the test cases: {e} The table was not changed.")
+            return
+        status.update(label="Revision ready: review it below", state="complete")
+    st.session_state["pending_revision"] = {
+        "base": test_cases,
+        "before": selected_cases,
+        "outcome": outcome,
+        "note": note,
+        "open_questions": reply.get("open_questions", []),
+        "usage": reply.get("usage", {}),
+    }
+
+
+def _render_revision(result: dict, test_cases: list[dict]) -> None:
+    """Select cases, describe the change, then accept or discard the AI's rewrite."""
+    with st.expander(
+        "✍️ Revise selected test cases with AI", expanded="pending_revision" in st.session_state
+    ):
+        st.caption(
+            "Pick test cases, say what should change (for example \"add negative cases for an "
+            "empty email\" or \"steps too vague, split step 3\"), and the AI rewrites only "
+            "those. Their ids stay the same, new cases get new ids, and nothing changes until "
+            "you accept."
+        )
+        options = revisable_ids(test_cases)
+        if len(options) < len(test_cases):
+            st.caption("Rows with an empty or repeated test id cannot be selected.")
+        # A selected id that an edit removed from the table is dropped, not kept as stale state.
+        kept = [test_id for test_id in st.session_state.get("revise_selection", []) if test_id in options]
+        st.session_state["revise_selection"] = kept
+        selected_ids = st.multiselect(
+            "Test cases to revise",
+            options,
+            key="revise_selection",
+            max_selections=MAX_REVISION_CASES,
+        )
+        note = st.text_area(
+            "What should change?",
+            key="revise_note",
+            height=100,
+            placeholder="E.g.: Add negative cases for an empty email. Step 3 is too vague: split it.",
+        )
+        if st.button(
+            "✨ Revise selected",
+            key="revise_btn",
+            disabled=not selected_ids or not note.strip(),
+        ):
+            _revise_selected(result, test_cases, selected_ids, note.strip())
+
+        pending = st.session_state.get("pending_revision")
+        if not pending:
+            return
+        outcome = pending["outcome"]
+        changes = {test_id: "Revised" for test_id in outcome["revised_ids"]}
+        changes.update({test_id: "Added" for test_id in outcome["added_ids"]})
+        st.markdown(
+            f"**Proposed revision:** {len(outcome['revised_ids'])} revised, "
+            f"{len(outcome['added_ids'])} added. Note: _{pending['note']}_"
+        )
+        st.caption("Before")
+        st.dataframe(
+            pd.DataFrame(records_for_editor(pending["before"])), width="stretch", hide_index=True
+        )
+        st.caption("After")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"change": changes[case["test_id"]], **case}
+                    for case in records_for_editor(outcome["test_cases"])
+                    if case["test_id"] in changes
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+        for question in pending["open_questions"]:
+            st.markdown(f"- ❓ {question}")
+        stale = pending["base"] != test_cases
+        if stale:
+            st.warning(
+                "The table changed after this revision was made. Discard it and revise again."
+            )
+        accept_column, discard_column = st.columns(2)
+        if accept_column.button(
+            "✅ Accept revision", key="accept_revision_btn", type="primary", disabled=stale
+        ):
+            revised = build_edited_result(result, outcome["test_cases"])
+            questions = revised["summary"]["open_questions"] + pending["open_questions"]
+            revised["summary"]["open_questions"] = list(dict.fromkeys(questions))
+            revised["usage"] = dict(pending["usage"])
+            _store_result(
+                revised,
+                st.session_state["last_config"],
+                st.session_state.get("last_requirement_text", ""),
+                f"Revised {len(outcome['revised_ids'])} test case(s): {pending['note'][:150]}",
+            )
+            st.rerun()
+        if discard_column.button("🗑️ Discard revision", key="discard_revision_btn"):
+            st.session_state.pop("pending_revision", None)
+            st.rerun()
 
 
 paste_tab, upload_tab = st.tabs(["📋 Paste text", "📄 Upload a file"])
@@ -408,6 +544,8 @@ if "last_result" in st.session_state:
             "expected result as Then. Tagged with test id, module, priority, type, platform "
             "and the acceptance criteria it covers.",
         )
+
+        _render_revision(result, edited_test_cases)
 
     summary = result.get("summary", {})
     open_questions = summary.get("open_questions", [])

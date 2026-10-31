@@ -182,10 +182,10 @@ criterion and flag a criterion that has none. In the `.feature` file each scenar
 tagged with its criteria (`@AC-1`), so `--tags @AC-1` runs one criterion's scenarios.
 Edit the Covers cells (comma-separated) to fix a link; the panel follows your edits.
 
-Each result is also saved to the **History** list in the sidebar, which keeps the newest 10.
+Each result is also added to the **History** list in the sidebar, which shows the newest 10.
 **Restore** brings a result back with its project config and requirement, so the Reviewer
 page checks it against them. The history is saved as one JSON file per run in the
-`history/` folder, which keeps the newest 50 and is ignored by Git. It survives a restart of
+`history/` folder, which keeps the newest 50 (more than the sidebar shows) and is ignored by Git. It survives a restart of
 the app. A file that can't be read is skipped with a warning. **Clear history** deletes the
 files after you confirm. To keep the history somewhere else, set `TESTCASE_HISTORY_DIR`.
 

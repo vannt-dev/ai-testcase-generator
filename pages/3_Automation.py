@@ -240,7 +240,7 @@ def _generate(
             try:
                 response = client.generate_automation(system_prompt, selected, pages)
             except ValueError as e:
-                status.update(label=f"Error: {e}", state="error")
+                status.update(label="Generation failed", state="error", expanded=True)
                 hint = " Try again and select fewer test cases." if "max_tokens" in str(e) else ""
                 st.error(f"Error calling the AI: {e}{hint}")
                 return
@@ -256,7 +256,7 @@ def _generate(
                 hint = " Try again and select fewer API test cases." if "max_tokens" in str(e) else ""
                 st.error(f"Error calling the AI for the API tests: {e}{hint}")
                 if not selected:
-                    status.update(label=f"Error: {e}", state="error")
+                    status.update(label="Generation failed", state="error", expanded=True)
                     return
                 # The web call is already paid for: keep its result and say what is missing.
                 api_failed = True
@@ -269,7 +269,7 @@ def _generate(
                 warnings += api_warnings
                 usages.append(response["usage"])
         if api_failed:
-            status.update(label="Web tests generated; the API tests failed", state="error")
+            status.update(label="Web tests generated; the API tests failed", state="error", expanded=True)
         else:
             status.update(label="Generation complete", state="complete")
 

@@ -155,7 +155,7 @@ def _render_notes_tab(configs: list[str]) -> None:
             try:
                 result = client.write_bug_report(system_prompt, notes, _related_context(related))
             except ValueError as e:
-                status.update(label=f"Error: {e}", state="error")
+                status.update(label="Bug report failed", state="error", expanded=True)
                 st.error(f"Error calling the AI: {e}")
                 return
             status.update(label="Done", state="complete")

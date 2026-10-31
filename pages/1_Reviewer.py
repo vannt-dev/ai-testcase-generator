@@ -63,7 +63,7 @@ def _run_review(
         try:
             result = client.review_test_cases(system_prompt, requirement_text, test_cases)
         except ValueError as e:
-            status.update(label=f"Error: {e}", state="error")
+            status.update(label="Review failed", state="error", expanded=True)
             st.error(f"Error calling the AI: {e}")
             return
         status.update(label="Review complete", state="complete")
@@ -208,7 +208,7 @@ if "review_result" in st.session_state:
                         review["gaps"],
                     )
                 except ValueError as e:
-                    status.update(label=f"Error: {e}", state="error")
+                    status.update(label="Generation failed", state="error", expanded=True)
                     st.error(f"Error calling the AI: {e}")
                     st.stop()
                 status.update(label="Done", state="complete")

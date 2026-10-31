@@ -9,6 +9,9 @@
   warning, and a failed save only shows a warning; the result stays on screen.
   **Clear history** deletes the files after you confirm. `TESTCASE_HISTORY_DIR` moves the
   folder.
+- When the AI call fails, the progress box now opens and shows the error. It used to stay
+  collapsed, so only a short "Error" label was visible and messages such as "The table was
+  not changed" were hidden. This applies to every page that calls the AI.
 
 ## 0.6.0 - 2026-10-31
 

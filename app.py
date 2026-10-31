@@ -262,7 +262,8 @@ def _revise_selected(result: dict, test_cases: list[dict], selected_ids: list[st
             )
             outcome = apply_revision(test_cases, selected_ids, reply)
         except ValueError as e:
-            status.update(label=f"Error: {e}", state="error")
+            # Open the box: the message below says the table was not changed.
+            status.update(label="Revision failed", state="error", expanded=True)
             st.error(f"Could not revise the test cases: {e} The table was not changed.")
             return
         status.update(label="Revision ready: review it below", state="complete")
@@ -478,7 +479,7 @@ if generate_btn:
         try:
             result = client.generate_test_cases(system_prompt, requirement_text)
         except ValueError as e:
-            status.update(label=f"Error: {e}", state="error")
+            status.update(label="Generation failed", state="error", expanded=True)
             st.error(f"Error calling the AI: {e}")
             st.stop()
         elapsed = time.time() - start_time

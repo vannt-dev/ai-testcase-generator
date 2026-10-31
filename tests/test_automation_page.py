@@ -278,6 +278,7 @@ def test_a_failed_api_call_keeps_the_web_result(monkeypatch):
 
     assert not at.exception
     assert any("rate limited" in error.value for error in at.error)
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
     stored = at.session_state["automation_result"]
     assert stored["api_automation"] is None
     assert any("API tests were not generated" in warning for warning in stored["warnings"])
@@ -294,6 +295,21 @@ def test_a_failed_web_call_stores_nothing(monkeypatch):
 
     assert not at.exception
     api_call.assert_not_called()
+    assert "automation_result" not in at.session_state
+    assert any("boom" in error.value for error in at.error)
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
+
+
+def test_a_failed_api_only_call_opens_the_status_box(monkeypatch):
+    at = _app(monkeypatch, [_case("TC_A1", platform="API", module="Orders")])
+    at.text_input(key="automation_api_base_url").set_value("https://api.example.com").run(timeout=30)
+    at.text_area(key="automation_api_description").set_value("GET /orders lists orders").run(timeout=30)
+    with patch.object(AIClient, "generate_api_automation", side_effect=ValueError("rate limited")):
+        at.button(key="automation_generate_btn").click().run(timeout=30)
+
+    assert not at.exception
+    assert any("rate limited" in error.value for error in at.error)
+    assert [status.proto.expanded for status in at.status if status.state == "error"] == [True]
     assert "automation_result" not in at.session_state
 
 

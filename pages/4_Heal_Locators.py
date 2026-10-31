@@ -80,7 +80,7 @@ def _heal(project, file_name, locators, error_text, snapshot, current_signature)
         try:
             response = client.heal_locators(system_prompt, file_name, locators, error_text, snapshot)
         except ValueError as e:
-            status.update(label=f"Error: {e}", state="error")
+            status.update(label="Healing failed", state="error", expanded=True)
             st.error(f"Error calling the AI: {e}")
             return
         status.update(label="Healing complete", state="complete")

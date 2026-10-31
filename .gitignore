@@ -5,5 +5,7 @@ __pycache__/
 venv/
 .streamlit/secrets.toml
 *.xlsx
+# Saved generation history (holds requirement text and results)
+/history/
 !configs/*.yaml
 .DS_Store

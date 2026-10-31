@@ -1,4 +1,5 @@
 """Integration tests for app.py using Streamlit AppTest (mocks AIClient, no real API calls)."""
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -79,7 +80,7 @@ def test_restoring_history_entry_restores_its_config_and_requirement(monkeypatch
     at.run(timeout=30)
 
     entry = at.session_state["history"][0]
-    at.button(key="restore_history_0").click().run(timeout=30)
+    at.button(key=f"restore_history_{entry['id']}").click().run(timeout=30)
 
     assert not at.exception
     assert at.session_state["last_config"] == entry["config"]
@@ -114,6 +115,110 @@ def test_requirement_too_long_shows_error(monkeypatch):
 
 def st_history_empty(at) -> bool:
     return "history" not in at.session_state or not at.session_state["history"]
+
+
+# ---------- History kept on disk between sessions ----------
+
+def _new_session():
+    at = AppTest.from_file(str(APP_PATH))
+    at.run(timeout=30)
+    return at
+
+
+def test_generating_saves_the_entry_to_the_history_folder_with_a_dated_timestamp(
+    monkeypatch, isolated_history_dir
+):
+    at = _run_generation(monkeypatch)
+
+    files = list(isolated_history_dir.glob("*.json"))
+    assert len(files) == 1
+    entry = at.session_state["history"][0]
+    assert entry["id"] == files[0].stem
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", entry["timestamp"])
+
+
+def test_a_new_session_loads_the_saved_history_and_can_restore_it(monkeypatch):
+    first = _run_generation(monkeypatch, requirement="Saved requirement about OTP login")
+    saved = first.session_state["history"][0]
+
+    second = _new_session()
+
+    assert not second.exception
+    history = second.session_state["history"]
+    assert [e["id"] for e in history] == [saved["id"]]
+    assert "last_result" not in second.session_state
+    assert any(header.value == "🕘 History" for header in second.sidebar.subheader)
+
+    second.button(key=f"restore_history_{saved['id']}").click().run(timeout=30)
+
+    assert not second.exception
+    assert second.session_state["last_result"] == saved["result"]
+    assert second.session_state["last_config"] == saved["config"]
+    assert second.session_state["last_requirement_text"] == "Saved requirement about OTP login"
+
+
+def test_a_broken_history_file_is_skipped_with_a_sidebar_warning(monkeypatch, isolated_history_dir):
+    _run_generation(monkeypatch)
+    (isolated_history_dir / "20260101-000000-000000-bad000.json").write_text("{oops", encoding="utf-8")
+
+    at = _new_session()
+
+    assert not at.exception
+    assert len(at.session_state["history"]) == 1
+    assert any("20260101-000000-000000-bad000.json" in w.value for w in at.sidebar.warning)
+
+
+def test_the_sidebar_shows_only_the_newest_ten_saved_entries(isolated_history_dir):
+    from core.history_store import save_entry
+
+    for n in range(12):
+        save_entry(
+            isolated_history_dir,
+            {
+                "timestamp": f"2026-10-31 10:00:{n:02d}",
+                "project_name": "Shop",
+                "requirement_excerpt": f"Requirement {n}",
+                "test_case_count": 1,
+                "result": FAKE_RESULT,
+                "config": {"project_name": "Shop"},
+                "requirement_text": f"Requirement {n}",
+            },
+        )
+
+    at = _new_session()
+
+    excerpts = [e["requirement_excerpt"] for e in at.session_state["history"]]
+    assert excerpts == [f"Requirement {n}" for n in range(2, 12)]
+
+
+def test_clear_history_asks_for_confirmation_before_deleting(monkeypatch, isolated_history_dir):
+    _run_generation(monkeypatch)
+    at = _new_session()
+
+    at.button(key="clear_history").click().run(timeout=30)
+    assert len(list(isolated_history_dir.glob("*.json"))) == 1
+
+    at.button(key="clear_history_cancel").click().run(timeout=30)
+    assert len(list(isolated_history_dir.glob("*.json"))) == 1
+    assert len(at.session_state["history"]) == 1
+
+    at.button(key="clear_history").click().run(timeout=30)
+    at.button(key="clear_history_confirm").click().run(timeout=30)
+
+    assert not at.exception
+    assert list(isolated_history_dir.glob("*.json")) == []
+    assert st_history_empty(at)
+    assert _new_session().session_state["history"] == []
+
+
+def test_a_failed_save_still_shows_the_result_with_a_warning(monkeypatch):
+    with patch("core.history_store.save_entry", side_effect=OSError("disk full")):
+        at = _run_generation(monkeypatch)
+
+    assert not at.exception
+    assert at.session_state["last_result"]["summary"]["total"] == 1
+    assert len(at.session_state["history"]) == 1
+    assert any("disk full" in w.value for w in at.warning)
 
 
 def test_no_page_uses_the_deprecated_use_container_width():

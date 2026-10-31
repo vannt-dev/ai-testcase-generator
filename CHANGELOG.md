@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- The generation history now survives a restart. Each result is saved as a JSON file in a
+  Git-ignored `history/` folder, which keeps the newest 50 runs. The sidebar list, now called
+  **History**, shows the newest 10 and loads them when a session starts. **Restore** works as
+  before. Timestamps include the date. A history file that can't be read is skipped with a
+  warning, and a failed save only shows a warning; the result stays on screen.
+  **Clear history** deletes the files after you confirm. `TESTCASE_HISTORY_DIR` moves the
+  folder.
+
 ## 0.6.0 - 2026-10-31
 
 - Revise selected test cases. Under the Generator's table, pick up to 20 test cases and write

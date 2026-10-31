@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Revise selected test cases. Under the Generator's table, pick up to 20 test cases and write
+  a note ("add negative cases for an empty email", "steps too vague, split step 3"); the AI
+  rewrites only those, using the requirement and acceptance criteria, keeps their test ids,
+  and gives any new case an unused id. The proposal is shown before and after and replaces
+  the old cases only when you accept it (it is added to the session history, so Restore
+  undoes it); the other cases stay exactly as they were. An AI error, or a reply that leaves
+  out, renames or repeats a selected case, leaves the table untouched. Works with every AI
+  provider.
+
 ## 0.5.0 - 2026-10-21
 
 - Traceability. The Generator lists the requirement's acceptance criteria, keeping the ids

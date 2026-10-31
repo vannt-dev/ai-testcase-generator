@@ -14,6 +14,7 @@ from core.ai_client import (
     GenerationResult,
     HealingResult,
     ReviewResult,
+    RevisionResult,
     build_api_automation_request,
     build_automation_request,
     build_healing_request,
@@ -603,3 +604,45 @@ def test_api_automation_request_neutralises_closing_tags():
 
     assert content.count("</test_case>") == 1
     assert content.count("</api_description>") == 1
+
+
+def test_revise_test_cases_returns_revised_added_and_usage():
+    case = VALID_RESULT.test_cases[0].model_dump()
+    parsed = RevisionResult.model_validate(
+        {"revised": [{**case, "title": "Login with a valid account"}], "added": [], "open_questions": ["Q?"]}
+    )
+    response = SimpleNamespace(
+        parsed_output=parsed, stop_reason="end_turn", usage=SimpleNamespace(input_tokens=40, output_tokens=20),
+    )
+    client, messages = make_client(response)
+
+    result = client.revise_test_cases(
+        "system prompt", "req text", [{"id": "AC-1", "text": "Login"}], [case],
+        "Make the title clearer", ["TC_LOGIN_001", "TC_LOGIN_002"],
+    )
+
+    assert messages.kwargs["output_format"] is RevisionResult
+    assert messages.kwargs["system"][0]["text"] == "system prompt"
+    user_content = messages.kwargs["messages"][0]["content"]
+    assert "req text" in user_content and "Make the title clearer" in user_content
+    assert "TC_LOGIN_002" in user_content
+    assert result["revised"][0]["title"] == "Login with a valid account"
+    assert result["added"] == []
+    assert result["open_questions"] == ["Q?"]
+    assert result["usage"]["output_tokens"] == 20
+
+
+def test_revise_test_cases_raises_when_the_reply_does_not_match_the_schema():
+    response = SimpleNamespace(
+        parsed_output=None, stop_reason="end_turn", usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+    )
+    client, _ = make_client(response)
+
+    with pytest.raises(ValueError, match="schema"):
+        client.revise_test_cases("s", "r", [], [{"test_id": "TC_1"}], "note", ["TC_1"])
+
+
+def test_revision_result_tolerates_a_reply_without_added_or_questions():
+    case = VALID_RESULT.test_cases[0].model_dump()
+    parsed = RevisionResult.model_validate({"revised": [case]})
+    assert parsed.added == [] and parsed.open_questions == []

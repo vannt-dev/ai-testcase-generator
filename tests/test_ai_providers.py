@@ -10,7 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from core.ai_client import AIClient, GenerationResult, _extract_json
+from core.ai_client import AIClient, GenerationResult, RevisionResult, _extract_json
 from core.ai_providers import PROVIDERS, get_provider
 
 CASE = {
@@ -313,3 +313,28 @@ def test_the_sidebar_starts_on_the_provider_named_in_the_environment(monkeypatch
     monkeypatch.setenv("AI_PROVIDER", "nonsense")
     at = AppTest.from_function(_sidebar_app).run(timeout=30)
     assert at.sidebar.selectbox[0].value == "anthropic"
+
+
+def test_revises_through_a_chat_completions_server(serve):
+    reply = {"revised": [{**CASE, "steps": "1. Open login\n2. Leave email empty\n3. Submit"}],
+             "added": [{**CASE, "test_id": "TC_LOGIN_002", "type": "Negative"}], "open_questions": []}
+    server = serve((200, _completion("```json\n" + json.dumps(reply) + "\n```")))
+
+    result = _client(server).revise_test_cases(
+        "REVISE PROMPT", "Login requirement", [], [CASE], "Split step 2", ["TC_LOGIN_001"],
+    )
+
+    assert result["revised"][0]["steps"].startswith("1. Open login")
+    assert result["added"][0]["test_id"] == "TC_LOGIN_002"
+    body = server.requests[0]["body"]
+    assert body["response_format"]["json_schema"]["name"] == "RevisionResult"
+    assert body["response_format"]["json_schema"]["schema"] == RevisionResult.model_json_schema()
+    assert "Split step 2" in body["messages"][1]["content"]
+
+
+def test_a_revision_reply_with_a_missing_field_is_an_error(serve):
+    broken = {"revised": [{k: v for k, v in CASE.items() if k != "expected_result"}]}
+    server = serve((200, _completion(json.dumps(broken))))
+
+    with pytest.raises(ValueError, match="expected_result"):
+        _client(server).revise_test_cases("S", "R", [], [CASE], "note", ["TC_LOGIN_001"])

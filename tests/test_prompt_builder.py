@@ -202,3 +202,14 @@ def test_api_automation_prompt_is_combined_with_the_project_config():
     assert "Playwright API tests" in prompt
     assert "${VAR:name}" in prompt and "${ENV:NAME}" in prompt
     assert "Errors return 422" in prompt
+
+
+def test_revise_prompt_includes_its_rules_and_the_project_config():
+    from core.prompt_builder import REVISE_PROMPT_PATH
+
+    config = load_project_config(CONFIGS_DIR / "example_ecommerce.yaml")
+    prompt = build_system_prompt(config, base_prompt_path=REVISE_PROMPT_PATH)
+
+    assert '"revised"' in prompt and '"added"' in prompt
+    assert "Never rename" in prompt
+    assert "E-commerce App Demo" in prompt

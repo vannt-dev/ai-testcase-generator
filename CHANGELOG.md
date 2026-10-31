@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 - 2026-10-31
 
 - Revise selected test cases. Under the Generator's table, pick up to 20 test cases and write
   a note ("add negative cases for an empty email", "steps too vague, split step 3"); the AI
@@ -10,6 +10,8 @@
   undoes it); the other cases stay exactly as they were. An AI error, or a reply that leaves
   out, renames or repeats a selected case, leaves the table untouched. Works with every AI
   provider.
+- README and landing page: open with what sets the tool apart: free and MIT, your own
+  API key or a local model server, and an Excel file manual testers can work from.
 
 ## 0.5.0 - 2026-10-21
 

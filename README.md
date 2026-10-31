@@ -109,7 +109,7 @@ ai-testcase-generator/
 Requires Python >= 3.10 (the code uses the `str | None` type hint syntax).
 
 ```bash
-git clone --branch v0.6.0 --depth 1 https://github.com/vannt-dev/ai-testcase-generator.git
+git clone --branch v0.7.0 --depth 1 https://github.com/vannt-dev/ai-testcase-generator.git
 cd ai-testcase-generator
 python -m venv venv
 source venv/bin/activate      # Windows: venv\Scripts\activate
@@ -182,10 +182,10 @@ criterion and flag a criterion that has none. In the `.feature` file each scenar
 tagged with its criteria (`@AC-1`), so `--tags @AC-1` runs one criterion's scenarios.
 Edit the Covers cells (comma-separated) to fix a link; the panel follows your edits.
 
-Each result is also saved to the **History** list in the sidebar, which keeps the newest 10.
+Each result is also added to the **History** list in the sidebar, which shows the newest 10.
 **Restore** brings a result back with its project config and requirement, so the Reviewer
 page checks it against them. The history is saved as one JSON file per run in the
-`history/` folder, which keeps the newest 50 and is ignored by Git. It survives a restart of
+`history/` folder, which keeps the newest 50 (more than the sidebar shows) and is ignored by Git. It survives a restart of
 the app. A file that can't be read is skipped with a warning. **Clear history** deletes the
 files after you confirm. To keep the history somewhere else, set `TESTCASE_HISTORY_DIR`.
 
@@ -328,11 +328,11 @@ pytest -q
 ```
 
 CI (GitHub Actions) automatically runs the full test suite on every
-push/PR to `main`. Release 0.6.0 includes 486 tests.
+push/PR to `main`. Release 0.7.0 includes 513 tests.
 
 ## Releases and upgrades
 
-Version **0.6.0** is distributed as a Streamlit application, not a PyPI library.
+Version **0.7.0** is distributed as a Streamlit application, not a PyPI library.
 Download the source archive from [GitHub Releases](https://github.com/vannt-dev/ai-testcase-generator/releases)
 or use the versioned clone command above, install `requirements.txt`, then run `streamlit run app.py`.
 For an upgrade, use a fresh checkout of the selected tag and copy only your own project YAML

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.1 - 2026-11-01
+
+- The Anthropic Python SDK moves from 1.x to 2.x (`anthropic>=2.3.0,<3.0.0`). Nothing changes in
+  the app. Run `pip install -r requirements.txt` after you update. The SDK now sends the API key
+  as `Authorization: Bearer`, so a proxy that only reads `X-Api-Key` would reject it.
+
 ## 0.7.0 - 2026-11-01
 
 - The generation history now survives a restart. Each result is saved as a JSON file in a

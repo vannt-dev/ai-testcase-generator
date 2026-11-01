@@ -40,14 +40,28 @@ needed.
 
 ## Architecture
 
-```
-Generator, Reviewer, Bug Reporter or Automation workflow
-            +
-Shared Core Engine + task-specific prompt
-            +
-Project Config (YAML)
-            =
-Project-aware test cases, coverage reports, bug reports and Playwright web and API tests
+```mermaid
+flowchart TB
+  ai["AI provider<br/>Claude (default)<br/>OpenAI, Gemini<br/>or a local model"]
+  req["Requirement or<br/>user story,<br/>typed or<br/>from a file"]
+  more["Test set, test<br/>run, bug notes<br/>or page object"]
+  cfg["Project config<br/>configs/*.yaml"]
+  core(["Shared core<br/>engine<br/>+ task prompt"])
+  gen["Generator<br/>test cases:<br/>Excel, Gherkin"]
+  rev["Reviewer<br/>coverage gaps,<br/>duplicates"]
+  bug["Bug Reporter<br/>bug reports"]
+  auto["Automation<br/>Playwright web<br/>and API tests"]
+  heal["Heal Locators<br/>repaired<br/>page object"]
+
+  ai <-.-> core
+  req --> core
+  more --> core
+  cfg --> core
+  core --> gen
+  core --> rev
+  core --> bug
+  core --> auto
+  core --> heal
 ```
 
 ## Directory structure

@@ -4,6 +4,7 @@ Excel or Gherkin, open it in the Generator, delete it or clear them all.
 """
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
@@ -16,6 +17,9 @@ from core.history_store import (
     provider_and_model,
 )
 from core.result_utils import find_incomplete_rows, records_for_editor
+
+# TESTCASE_HISTORY_DIR may be set in .env, and this page can be the first one opened.
+load_dotenv()
 
 st.set_page_config(page_title="History — AI Test Case Generator", page_icon="🕘", layout="wide")
 st.title("🕘 History")
@@ -30,6 +34,8 @@ st.caption(
 
 def _forget_in_session(entry_id: str | None) -> None:
     """Keep the Generator's sidebar list in step with the files (None: everything is gone)."""
+    if entry_id is None:
+        st.session_state.pop("history_file_warning", None)
     if "history" not in st.session_state:
         return
     if entry_id is None:
@@ -51,6 +57,31 @@ def _open_in_generator(entry: dict) -> None:
     st.session_state["last_requirement_text"] = entry["requirement_text"]
 
 
+def _render_clear_all() -> None:
+    """Clear all history, after a confirmation."""
+    if not st.session_state.get("history_confirm_clear"):
+        if st.button("🗑️ Clear all history", key="history_clear"):
+            st.session_state["history_confirm_clear"] = True
+            st.rerun()
+    else:
+        st.warning("Delete every file in the history folder? This can't be undone.")
+        confirm_column, cancel_column = st.columns(2)
+        if confirm_column.button("Yes, delete all", key="history_clear_confirm", type="primary"):
+            st.session_state.pop("history_confirm_clear", None)
+            try:
+                removed = clear_entries(folder)
+            except OSError as error:
+                st.error(f"Couldn't delete the history files in {folder}: {error}")
+            else:
+                _forget_in_session(None)
+                st.session_state.pop("history_selected", None)
+                st.session_state["history_page_notice"] = f"Deleted {removed} saved run(s)."
+                st.rerun()
+        if cancel_column.button("Cancel", key="history_clear_cancel"):
+            st.session_state.pop("history_confirm_clear", None)
+            st.rerun()
+
+
 entries, warnings = load_entries(folder, DEFAULT_KEEP)
 entries.reverse()  # newest first
 
@@ -62,6 +93,9 @@ for warning in warnings:
 
 if not entries:
     st.info("No saved runs yet. Generated test cases appear here as soon as they are made.")
+    if warnings:
+        # Only unreadable files are left; let them be removed from here too.
+        _render_clear_all()
     st.stop()
 
 rows = []
@@ -165,24 +199,4 @@ else:
         st.session_state.pop("history_confirm_delete", None)
         st.rerun()
 
-if not st.session_state.get("history_confirm_clear"):
-    if st.button("🗑️ Clear all history", key="history_clear"):
-        st.session_state["history_confirm_clear"] = True
-        st.rerun()
-else:
-    st.warning(f"Delete all {len(entries)} saved runs? This can't be undone.")
-    confirm_column, cancel_column = st.columns(2)
-    if confirm_column.button("Yes, delete all", key="history_clear_confirm", type="primary"):
-        st.session_state.pop("history_confirm_clear", None)
-        try:
-            removed = clear_entries(folder)
-        except OSError as error:
-            st.error(f"Couldn't delete the history files in {folder}: {error}")
-        else:
-            _forget_in_session(None)
-            st.session_state.pop("history_selected", None)
-            st.session_state["history_page_notice"] = f"Deleted {removed} saved run(s)."
-            st.rerun()
-    if cancel_column.button("Cancel", key="history_clear_cancel"):
-        st.session_state.pop("history_confirm_clear", None)
-        st.rerun()
+_render_clear_all()

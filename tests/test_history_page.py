@@ -242,3 +242,19 @@ def test_a_generated_run_shows_up_with_its_model_and_no_api_key(monkeypatch, iso
 
     at = _open_page()
     assert at.dataframe[0].value["Model"].tolist() == ["anthropic / claude-sonnet-5"]
+
+
+def test_a_folder_of_only_broken_files_can_still_be_cleared(isolated_history_dir):
+    isolated_history_dir.mkdir()
+    (isolated_history_dir / "20260101-000000-000000-bad000.json").write_text("{oops", encoding="utf-8")
+    at = _open_page()
+    at.session_state["history_file_warning"] = "Couldn't save this result"
+
+    assert any("No saved runs yet" in info.value for info in at.info)
+    at.button(key="history_clear").click().run(timeout=30)
+    at.button(key="history_clear_confirm").click().run(timeout=30)
+
+    assert not at.exception
+    assert list(isolated_history_dir.glob("*.json")) == []
+    assert at.warning.len == 0
+    assert "history_file_warning" not in at.session_state

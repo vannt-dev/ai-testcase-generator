@@ -98,6 +98,9 @@ def test_accepting_replaces_only_the_selected_case_and_keeps_history(monkeypatch
     history = at.session_state["history"]
     assert len(history) == 2
     assert history[-1]["requirement_excerpt"].startswith("Revised 1 test case(s)")
+    # The note is kept in full, so the History page can show why the set changed.
+    assert history[-1]["note"] == "Add a case for an empty OTP"
+    assert "note" not in history[0]
     # The earlier set stays in history, so Restore undoes the revision.
     assert history[0]["test_case_count"] == 2
 

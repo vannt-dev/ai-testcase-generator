@@ -3,7 +3,16 @@ import json
 
 import pytest
 
-from core.history_store import REQUIRED_KEYS, clear_entries, load_entries, save_entry
+from core.history_store import (
+    DEFAULT_FOLDER,
+    REQUIRED_KEYS,
+    clear_entries,
+    delete_entry,
+    history_dir,
+    load_entries,
+    provider_and_model,
+    save_entry,
+)
 
 
 def _entry(n: int = 1, **overrides) -> dict:
@@ -144,3 +153,79 @@ def test_values_json_cannot_encode_are_saved_as_text(tmp_path):
 
     assert warnings == []
     assert entries[0]["config"]["since"] == "2026-01-02"
+
+
+# ---------- Deleting one entry, the folder, provider and model ----------
+
+def test_delete_removes_only_that_entry(tmp_path):
+    first = save_entry(tmp_path, _entry(1))
+    save_entry(tmp_path, _entry(2))
+
+    assert delete_entry(tmp_path, first) is True
+
+    entries, warnings = load_entries(tmp_path, limit=10)
+    assert warnings == []
+    assert [e["requirement_excerpt"] for e in entries] == ["Requirement 2"]
+
+
+def test_deleting_a_missing_entry_returns_false(tmp_path):
+    entry_id = save_entry(tmp_path, _entry())
+    delete_entry(tmp_path, entry_id)
+
+    assert delete_entry(tmp_path, entry_id) is False
+    assert delete_entry(tmp_path / "nope", entry_id) is False
+
+
+@pytest.mark.parametrize(
+    "entry_id",
+    ["", "../secret", "..\\secret", "20260101-000000-000000-abc/../../x", "notes", "a.json"],
+)
+def test_delete_refuses_an_id_that_save_never_gives(tmp_path, entry_id):
+    (tmp_path / "secret.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        delete_entry(tmp_path / "history", entry_id)
+
+    assert (tmp_path / "secret.json").exists()
+
+
+def test_history_dir_follows_the_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("TESTCASE_HISTORY_DIR", str(tmp_path / "elsewhere"))
+    assert history_dir() == tmp_path / "elsewhere"
+
+    monkeypatch.delenv("TESTCASE_HISTORY_DIR")
+    assert history_dir() == DEFAULT_FOLDER
+    assert DEFAULT_FOLDER.name == "history"
+    assert (DEFAULT_FOLDER.parent / "app.py").is_file()
+
+
+def test_the_default_folder_is_ignored_by_git():
+    gitignore = (DEFAULT_FOLDER.parent / ".gitignore").read_text(encoding="utf-8")
+    assert "/history/" in gitignore.splitlines()
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        ({"provider": "openai", "model": "gpt-5"}, ("openai", "gpt-5")),
+        ({"model": "claude-sonnet-5"}, ("anthropic", "claude-sonnet-5")),
+        ({}, ("", "")),
+        (None, ("", "")),
+        ("not a dict", ("", "")),
+    ],
+)
+def test_provider_and_model_come_from_the_result_usage(usage, expected):
+    entry = _entry()
+    if usage is not None:
+        entry["result"]["usage"] = usage
+
+    assert provider_and_model(entry) == expected
+
+
+def test_an_entry_with_extra_fields_still_loads(tmp_path):
+    save_entry(tmp_path, _entry(note="Add negative cases", future_field={"x": 1}))
+
+    entries, warnings = load_entries(tmp_path, limit=10)
+
+    assert warnings == []
+    assert entries[0]["note"] == "Add negative cases"

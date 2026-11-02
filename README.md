@@ -30,7 +30,8 @@ needed.
   user stories, generates each section separately and merges the results into one set
 - Links each test case to the acceptance criteria it covers, and shows which
   criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
-- Keeps a history of generation runs on disk, so you can restore one after a restart
+- Keeps a history of generation runs on your machine: a History page lists them with
+  their date, source, model and case count, re-exports one to Excel, or deletes it
 - Reviews either the current generated set or an uploaded `.xlsx`/`.csv`
 - Suggests and lets the user confirm column mappings for external files
 - Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
@@ -73,7 +74,8 @@ ai-testcase-generator/
 │   ├── 1_Reviewer.py            # Coverage review, gap generation, merge/export
 │   ├── 2_Bug_Reporter.py        # Bug reports from rough notes, Markdown/Excel export
 │   ├── 3_Automation.py          # Playwright project from web and API test cases
-│   └── 4_Heal_Locators.py       # Repairs broken locators in a page object
+│   ├── 4_Heal_Locators.py       # Repairs broken locators in a page object
+│   └── 5_History.py             # Saved generation runs: view, re-export, delete
 ├── core/
 │   ├── ai_client.py              # Calls the AI provider (retry, pricing, structured output)
 │   ├── ai_providers.py           # The providers and what each needs (key, model, address)
@@ -88,7 +90,7 @@ ai-testcase-generator/
 │   ├── excel_exporter.py         # Exports results to .xlsx
 │   ├── gherkin_exporter.py       # Exports results to a Gherkin .feature file
 │   ├── traceability.py           # Maps acceptance criteria to the test cases covering them
-│   ├── history_store.py          # Saves, loads and clears the generation history files
+│   ├── history_store.py          # Saves, loads, deletes and clears the history files
 │   ├── bug_exporters.py          # Bug report Markdown/Excel export
 │   ├── bug_batch.py              # Bug reports from the failed rows of a test run
 │   ├── automation_inputs.py      # Checks Automation page input before the AI call
@@ -198,10 +200,26 @@ Edit the Covers cells (comma-separated) to fix a link; the panel follows your ed
 
 Each result is also added to the **History** list in the sidebar, which shows the newest 10.
 **Restore** brings a result back with its project config and requirement, so the Reviewer
-page checks it against them. The history is saved as one JSON file per run in the
-`history/` folder, which keeps the newest 50 (more than the sidebar shows) and is ignored by Git. It survives a restart of
-the app. A file that can't be read is skipped with a warning. **Clear history** deletes the
-files after you confirm. To keep the history somewhere else, set `TESTCASE_HISTORY_DIR`.
+page checks it against them.
+
+#### History
+
+Every generation run, and every accepted revision, is saved on your machine and survives a
+restart of the app. The **History** page lists all saved runs, newest first, with the date,
+the source (the start of the pasted text, or the file name and sections), the project, the
+AI provider and model, and the number of test cases. Pick a run to see its requirement,
+test cases, open questions and, for a revision, the note you wrote. From there you can:
+
+- **Download Excel** or **Download Gherkin** again, as for a fresh result.
+- **Open in the Generator** to put it back in the editable table (like **Restore**).
+- **Delete this run**, or **Clear all history**; both ask before deleting.
+
+Where it is stored: one JSON file per run, readable in any text editor, in the `history/`
+folder next to `app.py`. It keeps the newest 50 runs and is ignored by Git. To keep it
+somewhere else, set `TESTCASE_HISTORY_DIR` (in `.env` or the environment) to a folder path.
+API keys are never saved in it. A file that can't be read, or was written in a shape the app
+doesn't know, is skipped with a warning. To clear the history, use **Clear all history** on
+the History page (or **Clear history** in the sidebar), or delete the folder.
 
 #### Revise selected test cases
 
@@ -366,8 +384,9 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   another user's session or browser logs.
 - The generation history in `history/` holds each run's requirement text, project config
   and test cases as plain, unencrypted JSON. Anyone who can read the folder can read them.
-  On a shared server, every user's runs go to the same folder. Use **Clear history** or
-  delete the folder to remove them.
+  On a shared server, every user's runs go to the same folder, and every user can see and
+  delete them on the History page. Use **Clear all history** or delete the folder to remove
+  them.
 - Requirement files on the Generator are sent to the chosen AI provider section by section,
   like pasted text; they are limited to 10 MiB, and a PDF to 500 pages.
 - Uploaded files are limited to 10 MiB, 500 data rows, 256 columns, and

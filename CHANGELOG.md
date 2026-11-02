@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A **History** page lists every saved generation run (up to 50), newest first, with its
+  date, source, project, AI provider and model, and test case count. Open one to see its
+  requirement, test cases and open questions, download it again as Excel or Gherkin, put it
+  back in the Generator, or delete it; **Clear all history** deletes them all. Both ask
+  first. An accepted revision now also keeps its full note, shown on the page. Runs saved by
+  0.7.x open as before; a file that can't be read is skipped with a warning. API keys are
+  never saved.
+
 ## 0.7.1 - 2026-11-01
 
 - The Anthropic Python SDK moves from 1.x to 2.x (`anthropic>=2.3.0,<3.0.0`). Nothing changes in

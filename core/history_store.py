@@ -3,16 +3,23 @@
 File names start with the save time (``YYYYMMDD-HHMMSS-ffffff``), so sorting them by name
 gives the order the entries were saved in; a random suffix keeps two saves apart. The name
 without ``.json`` is the entry's ``id``.
+
+Entries never hold an API key: they keep the project config, the requirement, the result and
+the result's usage (provider, model, token counts).
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 
 DEFAULT_KEEP = 50
+# Where the history goes unless TESTCASE_HISTORY_DIR says otherwise: next to app.py, Git-ignored.
+DEFAULT_FOLDER = Path(__file__).resolve().parent.parent / "history"
+FOLDER_ENV = "TESTCASE_HISTORY_DIR"
 
 # The fields every entry has, and the type each must be for the entry to be restorable.
 REQUIRED_KEYS: dict[str, type] = {
@@ -27,6 +34,12 @@ REQUIRED_KEYS: dict[str, type] = {
 
 _STAMP_FORMAT = "%Y%m%d-%H%M%S-%f"
 _STAMP_LENGTH = len("YYYYMMDD-HHMMSS-ffffff")
+_ID_PATTERN = re.compile(r"\d{8}-\d{6}-\d{6}-[0-9a-z]+")
+
+
+def history_dir() -> Path:
+    """The history folder: `TESTCASE_HISTORY_DIR` when set, else `history/` next to app.py."""
+    return Path(os.environ.get(FOLDER_ENV) or DEFAULT_FOLDER)
 
 
 def _entry_files(folder: Path) -> list[Path]:
@@ -112,6 +125,33 @@ def load_entries(folder: Path, limit: int) -> tuple[list[dict], list[str]]:
         entries.append(data)
     entries.reverse()
     return entries, warnings
+
+
+def delete_entry(folder: Path, entry_id: str) -> bool:
+    """Delete one entry's file; return whether it was there.
+
+    Only an id shaped like the ones `save_entry` gives is accepted, so a crafted id can't
+    reach a file outside `folder`. Raises OSError when the file can't be deleted.
+    """
+    if not _ID_PATTERN.fullmatch(entry_id):
+        raise ValueError(f"Not a history entry id: {entry_id!r}")
+    path = folder / f"{entry_id}.json"
+    (folder / f"{entry_id}.json.tmp").unlink(missing_ok=True)
+    if not path.is_file():
+        return False
+    path.unlink()
+    return True
+
+
+def provider_and_model(entry: dict) -> tuple[str, str]:
+    """The AI provider and model that made the entry's result, or "" when it doesn't say."""
+    usage = entry.get("result", {}).get("usage") or {}
+    if not isinstance(usage, dict):
+        return "", ""
+    model = str(usage.get("model") or "")
+    # Results from before other providers were added only came from Claude.
+    provider = str(usage.get("provider") or ("anthropic" if model else ""))
+    return provider, model
 
 
 def clear_entries(folder: Path) -> int:

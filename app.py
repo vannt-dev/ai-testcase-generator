@@ -3,7 +3,6 @@ AI Test Case Generator — MVP UI (Streamlit)
 
 Run: streamlit run app.py
 """
-import os
 import time
 from datetime import datetime
 
@@ -25,7 +24,7 @@ from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.batch_generation import MAX_SECTIONS_PER_RUN, generate_section, merge_section_results
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
-from core.history_store import clear_entries, load_entries, save_entry
+from core.history_store import DEFAULT_KEEP, clear_entries, history_dir, load_entries, save_entry
 from core.requirement_import import (
     MAX_REQUIREMENT_CHARS,
     SUPPORTED_SUFFIXES,
@@ -50,9 +49,9 @@ st.set_page_config(page_title="AI Test Case Generator", page_icon="🧪", layout
 
 CONFIGS_DIR = Path("configs")
 # Each generation is saved as a JSON file here, so the history survives a restart.
-HISTORY_DIR = Path(os.environ.get("TESTCASE_HISTORY_DIR") or Path(__file__).parent / "history")
-MAX_HISTORY_ENTRIES = 10  # shown in the sidebar
-MAX_STORED_HISTORY_ENTRIES = 50  # kept on disk
+HISTORY_DIR = history_dir()
+MAX_HISTORY_ENTRIES = 10  # shown in the sidebar; the History page shows them all
+MAX_STORED_HISTORY_ENTRIES = DEFAULT_KEEP  # kept on disk
 # Selected cases per revision, so the rewrite and any new cases fit in one reply.
 MAX_REVISION_CASES = 20
 
@@ -102,6 +101,7 @@ with st.sidebar:
     if history or history_warnings:
         st.divider()
         st.subheader("🕘 History")
+        st.caption("The newest runs. The History page lists every saved run.")
         for warning in history_warnings:
             st.warning(warning)
         for index, entry in reversed(list(enumerate(history))):
@@ -149,8 +149,10 @@ with st.sidebar:
                 st.rerun()
 
 # ---------- Main ----------
-def _store_result(result: dict, config: dict, requirement_text: str, excerpt: str) -> None:
-    """Make `result` the current set and add it to this session's history."""
+def _store_result(
+    result: dict, config: dict, requirement_text: str, excerpt: str, note: str = ""
+) -> None:
+    """Make `result` the current set and add it to the history (`note`: a revision's note)."""
     _clear_result_widgets()
     st.session_state["last_result"] = result
     st.session_state["last_project_name"] = config["project_name"]
@@ -166,6 +168,8 @@ def _store_result(result: dict, config: dict, requirement_text: str, excerpt: st
         "config": config,
         "requirement_text": requirement_text,
     }
+    if note:
+        entry["note"] = note
     try:
         entry_id = save_entry(HISTORY_DIR, entry, keep=MAX_STORED_HISTORY_ENTRIES)
     except OSError as error:
@@ -359,6 +363,7 @@ def _render_revision(result: dict, test_cases: list[dict]) -> None:
                 st.session_state["last_config"],
                 st.session_state.get("last_requirement_text", ""),
                 f"Revised {len(outcome['revised_ids'])} test case(s): {pending['note'][:150]}",
+                note=pending["note"],
             )
             st.rerun()
         if discard_column.button("🗑️ Discard revision", key="discard_revision_btn"):

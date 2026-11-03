@@ -114,6 +114,11 @@ st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 ids = [entry["id"] for entry in entries]
 by_id = {entry["id"]: entry for entry in entries}
+# Set after a delete. Only dropping the old choice left the browser showing the deleted run's
+# label while the page below showed the next one; a value set here is sent to the browser.
+next_id = st.session_state.pop("history_select_next", None)
+if next_id in by_id:
+    st.session_state["history_selected"] = next_id
 entry_id = st.selectbox(
     "Open a run",
     ids,
@@ -193,6 +198,9 @@ else:
         else:
             _forget_in_session(entry_id)
             st.session_state.pop("history_selected", None)
+            remaining = [item for item in ids if item != entry_id]
+            if remaining:
+                st.session_state["history_select_next"] = remaining[0]
             st.session_state["history_page_notice"] = f"Deleted the run from {entry['timestamp']}."
             st.rerun()
     if cancel_column.button("Cancel", key="history_delete_cancel"):

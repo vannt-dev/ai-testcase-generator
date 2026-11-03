@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0 - 2026-11-03
 
 - A **History** page lists every saved generation run (up to 50), newest first, with its
   date, source, project, AI provider and model, and test case count. Open one to see its

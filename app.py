@@ -24,7 +24,14 @@ from core.ai_sidebar import ai_client_options, render_ai_settings
 from core.batch_generation import MAX_SECTIONS_PER_RUN, generate_section, merge_section_results
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
-from core.history_store import DEFAULT_KEEP, clear_entries, history_dir, load_entries, save_entry
+from core.history_store import (
+    DEFAULT_KEEP,
+    clear_entries,
+    history_dir,
+    load_entries,
+    new_entry_id,
+    save_entry,
+)
 from core.requirement_import import (
     MAX_REQUIREMENT_CHARS,
     SUPPORTED_SUFFIXES,
@@ -48,10 +55,12 @@ load_dotenv()
 st.set_page_config(page_title="AI Test Case Generator", page_icon="🧪", layout="wide")
 
 CONFIGS_DIR = Path("configs")
-# Each generation is saved as a JSON file here, so the history survives a restart.
+# With TESTCASE_HISTORY_DIR set, each generation is saved as a JSON file there and survives a
+# restart. Without it (None), the history stays in this browser session: on a shared server,
+# a folder would show every visitor's runs to everyone.
 HISTORY_DIR = history_dir()
 MAX_HISTORY_ENTRIES = 10  # shown in the sidebar; the History page shows them all
-MAX_STORED_HISTORY_ENTRIES = DEFAULT_KEEP  # kept on disk
+MAX_STORED_HISTORY_ENTRIES = DEFAULT_KEEP  # kept on disk, or in the session
 # Selected cases per revision, so the rewrite and any new cases fit in one reply.
 MAX_REVISION_CASES = 20
 
@@ -90,21 +99,31 @@ with st.sidebar:
         st.json(config)
 
     if "history" not in st.session_state:
-        # A new session starts from the history saved by earlier ones.
-        loaded, load_warnings = load_entries(HISTORY_DIR, MAX_HISTORY_ENTRIES)
+        # A new session starts from the history saved by earlier ones, when saving is on.
+        loaded, load_warnings = (
+            load_entries(HISTORY_DIR, MAX_HISTORY_ENTRIES) if HISTORY_DIR else ([], [])
+        )
         st.session_state["history"] = loaded
         st.session_state["history_load_warnings"] = load_warnings
     history = st.session_state["history"]
     history_warnings = list(st.session_state.get("history_load_warnings", []))
     if st.session_state.get("history_file_warning"):
         history_warnings.append(st.session_state["history_file_warning"])
-    if history or history_warnings:
+    if history or history_warnings or HISTORY_DIR is None:
         st.divider()
         st.subheader("🕘 History")
-        st.caption("The newest runs. The History page lists every saved run.")
+        if HISTORY_DIR is None:
+            st.caption(
+                "Runs are kept for this browser session only, so nobody else sees them. To "
+                "keep them on disk when you run the app yourself, set `TESTCASE_HISTORY_DIR` "
+                "(see the README)."
+            )
+        else:
+            st.caption("The newest runs. The History page lists every saved run.")
         for warning in history_warnings:
             st.warning(warning)
-        for index, entry in reversed(list(enumerate(history))):
+        newest = list(enumerate(history))[-MAX_HISTORY_ENTRIES:]
+        for index, entry in reversed(newest):
             label = (
                 f"{entry['timestamp']} · {entry['project_name']} · "
                 f"{entry['test_case_count']} test cases"
@@ -124,17 +143,19 @@ with st.sidebar:
                     st.session_state["last_requirement_text"] = entry["requirement_text"]
                     st.rerun()
 
-        if not st.session_state.get("confirm_clear_history"):
+        clearable = bool(history or history_warnings)  # an empty session list: nothing to clear
+        if clearable and not st.session_state.get("confirm_clear_history"):
             if st.button("🗑️ Clear history", key="clear_history"):
                 st.session_state["confirm_clear_history"] = True
                 st.rerun()
-        else:
+        elif clearable:
             st.warning("Delete every saved history entry? This can't be undone.")
             confirm_column, cancel_column = st.columns(2)
             if confirm_column.button("Yes, delete all", key="clear_history_confirm", type="primary"):
                 st.session_state.pop("confirm_clear_history", None)
                 try:
-                    clear_entries(HISTORY_DIR)
+                    if HISTORY_DIR:
+                        clear_entries(HISTORY_DIR)
                 except OSError as error:
                     st.session_state["history_file_warning"] = (
                         f"Couldn't delete the history files in {HISTORY_DIR}: {error}"
@@ -170,8 +191,12 @@ def _store_result(
     }
     if note:
         entry["note"] = note
+    history = st.session_state.setdefault("history", [])
     try:
-        entry_id = save_entry(HISTORY_DIR, entry, keep=MAX_STORED_HISTORY_ENTRIES)
+        if HISTORY_DIR:
+            entry_id = save_entry(HISTORY_DIR, entry, keep=MAX_STORED_HISTORY_ENTRIES)
+        else:
+            entry_id = new_entry_id(history[-1].get("id") if history else None)
     except OSError as error:
         # The result is still shown and kept for this session; it just won't survive a restart.
         message = f"Couldn't save this result to the history folder {HISTORY_DIR}: {error}"
@@ -181,9 +206,8 @@ def _store_result(
         entry["id"] = entry_id
         st.session_state.pop("history_file_warning", None)
 
-    history = st.session_state.setdefault("history", [])
     history.append(entry)
-    del history[:-MAX_HISTORY_ENTRIES]
+    del history[:-MAX_STORED_HISTORY_ENTRIES]
 
 
 def _new_client() -> AIClient | None:

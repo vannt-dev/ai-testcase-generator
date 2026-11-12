@@ -6,6 +6,10 @@ without ``.json`` is the entry's ``id``.
 
 Entries never hold an API key: they keep the project config, the requirement, the result and
 the result's usage (provider, model, token counts).
+
+Saving to disk is opt-in: only when `TESTCASE_HISTORY_DIR` names a folder. Without it the app
+keeps each browser session's runs in that session only, so on a shared or hosted server one
+visitor never sees, restores or deletes another visitor's runs.
 """
 from __future__ import annotations
 
@@ -17,8 +21,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 DEFAULT_KEEP = 50
-# Where the history goes unless TESTCASE_HISTORY_DIR says otherwise: next to app.py, Git-ignored.
-DEFAULT_FOLDER = Path(__file__).resolve().parent.parent / "history"
+# The folder the history is saved in; unset or empty keeps it in the browser session only.
 FOLDER_ENV = "TESTCASE_HISTORY_DIR"
 
 # The fields every entry has, and the type each must be for the entry to be restorable.
@@ -37,9 +40,14 @@ _STAMP_LENGTH = len("YYYYMMDD-HHMMSS-ffffff")
 _ID_PATTERN = re.compile(r"\d{8}-\d{6}-\d{6}-[0-9a-z]+")
 
 
-def history_dir() -> Path:
-    """The history folder: `TESTCASE_HISTORY_DIR` when set, else `history/` next to app.py."""
-    return Path(os.environ.get(FOLDER_ENV) or DEFAULT_FOLDER)
+def history_dir() -> Path | None:
+    """The history folder `TESTCASE_HISTORY_DIR` names, or None to keep runs in the session only.
+
+    There is no default folder: a server shared by several people would show every visitor's
+    runs to everyone. Whoever runs the app for themselves turns saving on.
+    """
+    value = os.environ.get(FOLDER_ENV, "").strip()
+    return Path(value) if value else None
 
 
 def _entry_files(folder: Path) -> list[Path]:
@@ -48,21 +56,22 @@ def _entry_files(folder: Path) -> list[Path]:
     return sorted(folder.glob("*.json"), key=lambda path: path.name)
 
 
-def _next_stamp(existing: list[Path]) -> str:
-    """The current time, moved past the newest file's when the clock hasn't moved on.
+def new_entry_id(newest_id: str | None = None) -> str:
+    """A new entry id that sorts after `newest_id`, the newest id so far (None: there is none).
 
-    Windows clocks can tick in steps of several milliseconds, so two quick saves could
-    otherwise get the same time and sort in random order.
+    The id starts with the current time, moved past the newest id's when the clock hasn't
+    moved on: Windows clocks can tick in steps of several milliseconds, so two quick saves
+    could otherwise get the same time and sort in random order.
     """
     now = datetime.now()
-    if existing:
+    if newest_id:
         try:
-            newest = datetime.strptime(existing[-1].name[:_STAMP_LENGTH], _STAMP_FORMAT)
+            newest = datetime.strptime(newest_id[:_STAMP_LENGTH], _STAMP_FORMAT)
         except ValueError:
             newest = None
         if newest is not None and newest >= now:
             now = newest + timedelta(microseconds=1)
-    return now.strftime(_STAMP_FORMAT)
+    return f"{now.strftime(_STAMP_FORMAT)}-{secrets.token_hex(3)}"
 
 
 def save_entry(folder: Path, entry: dict, keep: int = DEFAULT_KEEP) -> str:
@@ -72,7 +81,7 @@ def save_entry(folder: Path, entry: dict, keep: int = DEFAULT_KEEP) -> str:
     """
     folder.mkdir(parents=True, exist_ok=True)
     existing = _entry_files(folder)
-    entry_id = f"{_next_stamp(existing)}-{secrets.token_hex(3)}"
+    entry_id = new_entry_id(existing[-1].stem if existing else None)
     path = folder / f"{entry_id}.json"
     temp_path = folder / f"{entry_id}.json.tmp"
     try:

@@ -1,15 +1,16 @@
 """Tests for core.history_store: generation history saved as one JSON file per entry."""
 import json
+from pathlib import Path
 
 import pytest
 
 from core.history_store import (
-    DEFAULT_FOLDER,
     REQUIRED_KEYS,
     clear_entries,
     delete_entry,
     history_dir,
     load_entries,
+    new_entry_id,
     provider_and_model,
     save_entry,
 )
@@ -193,15 +194,30 @@ def test_history_dir_follows_the_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("TESTCASE_HISTORY_DIR", str(tmp_path / "elsewhere"))
     assert history_dir() == tmp_path / "elsewhere"
 
-    monkeypatch.delenv("TESTCASE_HISTORY_DIR")
-    assert history_dir() == DEFAULT_FOLDER
-    assert DEFAULT_FOLDER.name == "history"
-    assert (DEFAULT_FOLDER.parent / "app.py").is_file()
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_without_a_folder_the_history_stays_in_the_session(monkeypatch, value):
+    # No default folder: on a shared server it would hold every visitor's runs.
+    if value is None:
+        monkeypatch.delenv("TESTCASE_HISTORY_DIR", raising=False)
+    else:
+        monkeypatch.setenv("TESTCASE_HISTORY_DIR", value)
+    assert history_dir() is None
 
 
-def test_the_default_folder_is_ignored_by_git():
-    gitignore = (DEFAULT_FOLDER.parent / ".gitignore").read_text(encoding="utf-8")
+def test_the_suggested_local_folder_is_ignored_by_git():
+    gitignore = (Path(__file__).parent.parent / ".gitignore").read_text(encoding="utf-8")
     assert "/history/" in gitignore.splitlines()
+
+
+def test_new_ids_sort_in_creation_order_and_can_be_deleted_by_shape(tmp_path):
+    ids = [new_entry_id()]
+    for _ in range(20):
+        ids.append(new_entry_id(ids[-1]))
+
+    assert ids == sorted(ids)
+    assert len(set(ids)) == len(ids)
+    assert delete_entry(tmp_path, ids[0]) is False  # accepted as an id, just not on disk
 
 
 @pytest.mark.parametrize(

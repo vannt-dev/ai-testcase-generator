@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The generation history no longer leaks between people on a shared server, such as the live
+  demo. Before, every run went to one `history/` folder on the server, so each visitor saw
+  other visitors' requirements and test cases, and **Clear history** deleted everyone's runs.
+  Now the history is kept in the browser session only, unless `TESTCASE_HISTORY_DIR` names a
+  folder. **To keep your saved runs on your own machine, add `TESTCASE_HISTORY_DIR=history`
+  to `.env`** (now in `.env.example`); the folder and its files are left as they were.
+
 ## 0.8.0 - 2026-11-03
 
 - A **History** page lists every saved generation run (up to 50), newest first, with its

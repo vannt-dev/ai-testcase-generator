@@ -1,6 +1,7 @@
 """
-History — every generation run saved on this computer: view one, download it again as
-Excel or Gherkin, open it in the Generator, delete it or clear them all.
+History — every generation run of this browser session, or every run saved on this computer
+when TESTCASE_HISTORY_DIR is set: view one, download it again as Excel or Gherkin, open it in
+the Generator, delete it or clear them all.
 """
 import pandas as pd
 import streamlit as st
@@ -24,12 +25,22 @@ load_dotenv()
 st.set_page_config(page_title="History — AI Test Case Generator", page_icon="🕘", layout="wide")
 st.title("🕘 History")
 
+# None: the runs live only in this browser session (the Generator keeps them in "history").
 folder = history_dir()
-st.caption(
-    f"Each generation run is saved as a JSON file in `{folder}` on this computer; the newest "
-    f"{DEFAULT_KEEP} are kept. API keys are never saved. Set `TESTCASE_HISTORY_DIR` to use "
-    "another folder."
-)
+if folder is None:
+    st.caption(
+        f"Runs are kept for this browser session only (the newest {DEFAULT_KEEP}), so nobody "
+        "else can see them; they are gone when you close or reload the page. API keys are "
+        "never saved. To keep runs on disk when you run the app yourself, set "
+        "`TESTCASE_HISTORY_DIR` to a folder, for example `TESTCASE_HISTORY_DIR=history` in "
+        "`.env` (the folder earlier versions used)."
+    )
+else:
+    st.caption(
+        f"Each generation run is saved as a JSON file in `{folder}` on this computer; the "
+        f"newest {DEFAULT_KEEP} are kept. API keys are never saved. Set `TESTCASE_HISTORY_DIR` "
+        "to use another folder."
+    )
 
 
 def _forget_in_session(entry_id: str | None) -> None:
@@ -69,7 +80,10 @@ def _render_clear_all() -> None:
         if confirm_column.button("Yes, delete all", key="history_clear_confirm", type="primary"):
             st.session_state.pop("history_confirm_clear", None)
             try:
-                removed = clear_entries(folder)
+                if folder is None:
+                    removed = len(st.session_state.get("history", []))
+                else:
+                    removed = clear_entries(folder)
             except OSError as error:
                 st.error(f"Couldn't delete the history files in {folder}: {error}")
             else:
@@ -82,7 +96,10 @@ def _render_clear_all() -> None:
             st.rerun()
 
 
-entries, warnings = load_entries(folder, DEFAULT_KEEP)
+if folder is None:
+    entries, warnings = list(st.session_state.get("history", [])), []
+else:
+    entries, warnings = load_entries(folder, DEFAULT_KEEP)
 entries.reverse()  # newest first
 
 notice = st.session_state.pop("history_page_notice", None)
@@ -192,7 +209,8 @@ else:
     if confirm_column.button("Yes, delete it", key="history_delete_confirm", type="primary"):
         st.session_state.pop("history_confirm_delete", None)
         try:
-            delete_entry(folder, entry_id)
+            if folder is not None:
+                delete_entry(folder, entry_id)
         except OSError as error:
             st.error(f"Couldn't delete the history file in {folder}: {error}")
         else:

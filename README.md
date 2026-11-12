@@ -30,8 +30,10 @@ needed.
   user stories, generates each section separately and merges the results into one set
 - Links each test case to the acceptance criteria it covers, and shows which
   criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
-- Keeps a history of generation runs on your machine: a History page lists them with
-  their date, source, model and case count, re-exports one to Excel, or deletes it
+- Keeps a history of generation runs: a History page lists them with their date, source,
+  model and case count, re-exports one to Excel, or deletes it. Runs stay in your browser
+  session, or on disk when you set `TESTCASE_HISTORY_DIR`; on a shared server nobody sees
+  another person's runs
 - Reviews either the current generated set or an uploaded `.xlsx`/`.csv`
 - Suggests and lets the user confirm column mappings for external files
 - Scores coverage, flags gaps/duplicates, and generates cases for selected gaps
@@ -204,9 +206,9 @@ page checks it against them.
 
 #### History
 
-Every generation run, and every accepted revision, is saved on your machine and survives a
-restart of the app. The **History** page lists all saved runs, newest first, with the date,
-the source (the start of the pasted text, or the file name and sections), the project, the
+Every generation run, and every accepted revision, is added to the history. The **History**
+page lists all saved runs, newest first, with the date, the source (the start of the pasted
+text, or the file name and sections), the project, the
 AI provider and model, and the number of test cases. Pick a run to see its requirement,
 test cases, open questions and, for a revision, the note you wrote. From there you can:
 
@@ -214,12 +216,29 @@ test cases, open questions and, for a revision, the note you wrote. From there y
 - **Open in the Generator** to put it back in the editable table (like **Restore**).
 - **Delete this run**, or **Clear all history**; both ask before deleting.
 
-Where it is stored: one JSON file per run, readable in any text editor, in the `history/`
-folder next to `app.py`. It keeps the newest 50 runs and is ignored by Git. To keep it
-somewhere else, set `TESTCASE_HISTORY_DIR` (in `.env` or the environment) to a folder path.
-API keys are never saved in it. A file that can't be read, or was written in a shape the app
-doesn't know, is skipped with a warning. To clear the history, use **Clear all history** on
-the History page (or **Clear history** in the sidebar), or delete the folder.
+Where it is stored depends on `TESTCASE_HISTORY_DIR`:
+
+- **Not set (the default, and the [live demo](https://ai-testcase-gen.streamlit.app/))**:
+  the runs are kept in your browser session only, the newest 50. Nothing is written to the
+  server, nobody else can see them, and they are gone when you close or reload the page.
+  **Clear history** and **Delete this run** only touch your own session.
+- **Set to a folder** (in `.env` or the environment), for example
+  `TESTCASE_HISTORY_DIR=history`: each run is saved there as one JSON file, readable in any
+  text editor, and the history survives a restart of the app. It keeps the newest 50 runs;
+  the `history/` folder next to `app.py` is ignored by Git. A file that can't be read, or was
+  written in a shape the app doesn't know, is skipped with a warning. To clear the history,
+  use **Clear all history** on the History page (or **Clear history** in the sidebar), or
+  delete the folder.
+
+Turn the folder on only when you run the app for yourself. Everyone who uses the same app
+server shares that folder: they all see, and can delete, each other's runs.
+
+API keys are never saved in the history.
+
+> **Upgrading from 0.7 or 0.8?** Those versions saved the history to `history/` next to
+> `app.py` without asking. That folder is left as it is, but the app no longer reads it
+> unless you add `TESTCASE_HISTORY_DIR=history` to `.env` (as in `.env.example`), or set the
+> variable to the folder's full path. Then your earlier runs appear again.
 
 #### Revise selected test cases
 
@@ -369,6 +388,8 @@ Download the source archive from [GitHub Releases](https://github.com/vannt-dev/
 or use the versioned clone command above, install `requirements.txt`, then run `streamlit run app.py`.
 For an upgrade, use a fresh checkout of the selected tag and copy only your own project YAML
 configuration into `configs/`. Keep API keys in your local environment or the sidebar, outside Git.
+To keep the generation history across versions, point `TESTCASE_HISTORY_DIR` at a folder
+outside the checkout (see [History](#history)).
 
 The hosted demo may update independently of a tagged release. The sidebar identifies the running
 application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload limits.
@@ -382,11 +403,13 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   `ANTHROPIC_API_KEY` environment variable (or the chosen provider's own) on the server/secrets manager
   and hide/remove that input field, to avoid leaking the key through
   another user's session or browser logs.
-- The generation history in `history/` holds each run's requirement text, project config
-  and test cases as plain, unencrypted JSON. Anyone who can read the folder can read them.
-  On a shared server, every user's runs go to the same folder, and every user can see and
-  delete them on the History page. Use **Clear all history** or delete the folder to remove
-  them.
+- By default the generation history stays in each browser session and is never written to
+  disk, so on a shared server (such as the live demo) one user can't see or delete another
+  user's runs. Do not set `TESTCASE_HISTORY_DIR` on a shared server: the folder it names is
+  read by every session, so every user would see and be able to delete everyone's runs.
+  On your own machine, that folder holds each run's requirement text, project config and
+  test cases as plain, unencrypted JSON; anyone who can read the folder can read them. Use
+  **Clear all history** or delete the folder to remove them.
 - Requirement files on the Generator are sent to the chosen AI provider section by section,
   like pasted text; they are limited to 10 MiB, and a PDF to 500 pages.
 - Uploaded files are limited to 10 MiB, 500 data rows, 256 columns, and

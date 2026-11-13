@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.1 - 2026-11-13
 
 - The generation history no longer leaks between people on a shared server, such as the live
   demo. Before, every run went to one `history/` folder on the server, so each visitor saw

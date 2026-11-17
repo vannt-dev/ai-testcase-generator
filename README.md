@@ -100,7 +100,8 @@ ai-testcase-generator/
 │   ├── playwright_renderer.py    # Renders page objects, specs and the project zip
 │   ├── api_automation_validate.py # Cleans AI API automation output (requests, variables)
 │   ├── api_renderer.py           # Renders API specs and their support file
-│   └── locator_healing.py        # Finds, validates and patches page object locators
+│   ├── locator_healing.py        # Finds, validates and patches page object locators
+│   └── version.py                # The release number shown on the Generator page
 ├── configs/
 │   ├── _template.yaml            # Copy this file when adding a new project
 │   ├── example_ecommerce.yaml    # Sample config

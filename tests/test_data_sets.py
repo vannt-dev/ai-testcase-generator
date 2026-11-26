@@ -255,6 +255,16 @@ def test_schema_keeps_values_exactly_and_allows_an_empty_one():
     )
 
 
+@pytest.mark.parametrize("value, text", [(17, "17"), (-1.5, "-1.5"), (None, ""), (True, "true")])
+def test_schema_takes_numbers_booleans_and_null_as_text(value, text):
+    parsed = DataSetResult.model_validate(
+        {"fields": ["age"], "rows": [{"category": "Boundary", "values": _cells(age=value),
+                                       "expected_result": "ok"}]}
+    )
+
+    assert parsed.rows[0].values[0].value == text
+
+
 @pytest.mark.parametrize(
     "change",
     [

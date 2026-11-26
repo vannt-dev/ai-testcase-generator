@@ -9,8 +9,8 @@
   from a `.csv`/`.xlsx` file (`category` and `expected_result` columns are optional, up to
   200 rows). Download the rows as CSV. Values are kept exactly, including empty cells and
   leading spaces. A reply that leaves out or invents a field attaches nothing. The rows
-  stay with their test case through table edits and accepted revisions. Works with every
-  AI provider.
+  stay with their test case while its test id is in the set, also after an accepted
+  revision. Works with every AI provider.
 
 ## 0.8.1 - 2026-11-13
 

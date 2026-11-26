@@ -108,6 +108,18 @@ class DataCell(BaseModel):
     field: str = Field(min_length=1)
     value: str
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def _numbers_and_null_as_text(cls, value):
+        """A JSON-mode reply may give 17, true or null; keep them as the text a tester types."""
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        return value
+
 
 class DataRow(BaseModel):
     """One row of a data set: a concrete value for every input field and what should happen."""

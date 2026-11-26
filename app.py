@@ -3,6 +3,7 @@ AI Test Case Generator — MVP UI (Streamlit)
 
 Run: streamlit run app.py
 """
+import re
 import time
 from datetime import datetime
 
@@ -12,6 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from core.prompt_builder import (
+    DATA_SET_PROMPT_PATH,
     REVISE_PROMPT_PATH,
     ProjectConfigError,
     build_system_prompt,
@@ -21,6 +23,13 @@ from core.prompt_builder import (
 )
 from core.ai_client import AIClient
 from core.ai_sidebar import ai_client_options, render_ai_settings
+from core.data_sets import (
+    MAX_AI_ROWS,
+    data_set_from_file,
+    data_set_from_reply,
+    data_set_records,
+    data_set_to_csv,
+)
 from core.batch_generation import MAX_SECTIONS_PER_RUN, generate_section, merge_section_results
 from core.excel_exporter import export_to_excel
 from core.gherkin_exporter import export_to_gherkin
@@ -66,7 +75,9 @@ MAX_REVISION_CASES = 20
 
 def _clear_result_widgets() -> None:
     """Forget the table edits and any revision of the set that is about to be replaced."""
-    for key in ("test_case_editor", "pending_revision", "revise_selection", "revise_note"):
+    for key in (
+        "test_case_editor", "pending_revision", "revise_selection", "revise_note", "data_set_case",
+    ):
         st.session_state.pop(key, None)
 
 
@@ -395,6 +406,117 @@ def _render_revision(result: dict, test_cases: list[dict]) -> None:
             st.rerun()
 
 
+def _attach_data_set(result: dict, test_id: str, data_set: dict | None) -> None:
+    """Attach `data_set` to a test case of the current set (None removes it); the table is kept."""
+    data_sets = dict(result.get("data_sets") or {})
+    if data_set is None:
+        data_sets.pop(test_id, None)
+    else:
+        data_sets[test_id] = data_set
+    # A new dict, so a history entry that shares the old one is not changed behind its back.
+    st.session_state["last_result"] = {**result, "data_sets": data_sets}
+
+
+def _generate_data_set(result: dict, test_case: dict) -> bool:
+    """Ask the AI for data rows for one case and attach them; an error is shown, nothing changes."""
+    client = _new_client()
+    if client is None:
+        return False
+    system_prompt = build_system_prompt(st.session_state["last_config"], DATA_SET_PROMPT_PATH)
+    with st.status(f"AI is writing data rows for {test_case['test_id']}...", expanded=False) as status:
+        try:
+            reply = client.generate_data_set(
+                system_prompt,
+                st.session_state.get("last_requirement_text", ""),
+                test_case,
+                MAX_AI_ROWS,
+                MAX_REQUIREMENT_CHARS,
+            )
+            data_set = data_set_from_reply(reply)
+        except ValueError as e:
+            status.update(label="Data set failed", state="error", expanded=True)
+            st.error(f"Could not write the data set: {e}")
+            return False
+        status.update(label="Data set ready", state="complete")
+    data_set["usage"] = dict(reply.get("usage") or {})
+    _attach_data_set(result, test_case["test_id"], data_set)
+    return True
+
+
+def _render_data_sets(result: dict, test_cases: list[dict]) -> None:
+    """Data-driven testing: data rows per test case, written by the AI or read from a CSV."""
+    data_sets = build_edited_result(result, test_cases).get("data_sets", {})
+    with st.expander("🧮 Test data sets (data-driven testing)", expanded=bool(data_sets)):
+        st.caption(
+            "Attach a table of concrete data rows to a test case: valid, boundary and invalid "
+            "values for each input field, each with its expected result. The AI can write it, "
+            "or you can attach a .csv/.xlsx of rows (a category and an expected_result column "
+            "are optional; every other column is an input field). Download it as CSV for a "
+            "data-driven test runner or to fill in by hand."
+        )
+        options = revisable_ids(test_cases)
+        if not options:
+            st.caption("Give each test case its own test id to attach data rows.")
+            return
+        if data_sets:
+            st.caption(
+                "Attached: "
+                + ", ".join(f"{test_id} ({len(data_sets[test_id]['rows'])} rows)" for test_id in data_sets)
+            )
+        if st.session_state.get("data_set_case") not in options:
+            st.session_state.pop("data_set_case", None)
+        test_id = st.selectbox("Test case", options, key="data_set_case")
+        test_case = next(case for case in test_cases if case["test_id"] == test_id)
+        current = data_sets.get(test_id)
+
+        if st.button(
+            "✨ Generate data rows with AI" + (" (replaces the attached rows)" if current else ""),
+            key="data_set_generate_btn",
+        ):
+            if _generate_data_set(result, test_case):
+                st.rerun()
+        uploaded = st.file_uploader(
+            "Or attach your own data rows (.csv, .xlsx)",
+            type=["csv", "xlsx"],
+            key="data_set_file",
+        )
+        if st.button("📎 Attach file", key="data_set_attach_btn", disabled=uploaded is None):
+            try:
+                data_set = data_set_from_file(uploaded)
+            except ValueError as e:
+                st.error(f"Could not attach the file: {e}")
+            else:
+                _attach_data_set(result, test_id, data_set)
+                st.rerun()
+
+        if not current:
+            return
+        st.markdown(
+            f"**{len(current['rows'])} data rows** for {test_id}, from {current.get('source', 'AI')}"
+        )
+        st.dataframe(pd.DataFrame(data_set_records(current)), width="stretch", hide_index=True)
+        for question in current.get("open_questions", []):
+            st.markdown(f"- ❓ {question}")
+        usage = current.get("usage") or {}
+        if usage:
+            cost = usage.get("estimated_cost_usd")
+            st.caption(
+                f"Tokens: {usage.get('input_tokens', 0):,} in, {usage.get('output_tokens', 0):,} "
+                "out" + (f", about ${cost:.6f}" if cost is not None else "")
+            )
+        download_column, remove_column = st.columns(2)
+        download_column.download_button(
+            "⬇️ Download data set (.csv)",
+            data=data_set_to_csv(current),
+            file_name=f"testdata_{re.sub(r'[^A-Za-z0-9_.-]+', '_', test_id)}.csv",
+            mime="text/csv",
+            key="data_set_download_btn",
+        )
+        if remove_column.button("🗑️ Remove data set", key="data_set_remove_btn"):
+            _attach_data_set(result, test_id, None)
+            st.rerun()
+
+
 paste_tab, upload_tab = st.tabs(["📋 Paste text", "📄 Upload a file"])
 
 with paste_tab:
@@ -627,6 +749,7 @@ if "last_result" in st.session_state:
         )
 
         _render_revision(result, edited_test_cases)
+        _render_data_sets(result, edited_test_cases)
 
     summary = result.get("summary", {})
     open_questions = summary.get("open_questions", [])

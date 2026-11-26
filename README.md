@@ -28,6 +28,9 @@ needed.
   [Other AI providers](#other-ai-providers))
 - Reads requirement documents (`.docx`, `.pdf`, `.md`, `.txt`) or a `.csv` backlog of
   user stories, generates each section separately and merges the results into one set
+- Attaches data sets to a test case for data-driven testing: valid, boundary and invalid
+  values for each input field with the expected result, written by the AI or read from your
+  own `.csv`/`.xlsx`, and downloaded as CSV
 - Links each test case to the acceptance criteria it covers, and shows which
   criteria have no test case yet (in the app, the Excel file and as Gherkin tags)
 - Keeps a history of generation runs: a History page lists them with their date, source,
@@ -88,6 +91,7 @@ ai-testcase-generator/
 │   ├── prompt_builder.py         # Builds Generator/Reviewer prompts + project config
 │   ├── review_utils.py           # Column mapping and collision-safe merging
 │   ├── revision.py               # Checks and merges a revision of selected test cases
+│   ├── data_sets.py              # Data rows per test case: checks, CSV export and import
 │   ├── result_utils.py           # Normalizes/recomputes the summary on user edits
 │   ├── excel_exporter.py         # Exports results to .xlsx
 │   ├── gherkin_exporter.py       # Exports results to a Gherkin .feature file
@@ -110,6 +114,7 @@ ai-testcase-generator/
 │   ├── base_system_prompt.md     # Generates complete test cases
 │   ├── reviewer_system_prompt.md # Reviews coverage without rewriting cases
 │   ├── revise_system_prompt.md   # Rewrites selected test cases from a tester's note
+│   ├── data_set_system_prompt.md # Writes valid, boundary and invalid data rows for a case
 │   ├── column_mapping_system_prompt.md
 │   ├── bug_report_system_prompt.md # Writes one bug report from notes
 │   ├── run_column_mapping_system_prompt.md
@@ -260,6 +265,30 @@ error and the table stays as it was. Edit the table after revising and the propo
 longer be accepted; discard it and revise again. To delete a case, delete its row. This
 works with every AI provider in the sidebar; a requirement longer than 40,000 characters
 (a large uploaded file) is cut to that length for the revision.
+
+#### Test data sets (data-driven testing)
+
+To run one test case with many sets of values, open **Test data sets (data-driven
+testing)** under the table and pick the test case. **Generate data rows with AI** sends that
+case as it is in the table, with the requirement, and gets back a table with one column per
+input field (for example `email` and `password`) and up to 30 rows: **Valid** values,
+**Boundary** values on and around each limit, and **Invalid** values such as empty, wrong
+format or too long, each with its own expected result. Limits the requirement does not
+state are asked about instead of guessed. A reply whose rows leave out a field, repeat one
+or name one that is not in the table is shown as an error and nothing is attached.
+
+You can also attach your own rows: choose a `.csv` or `.xlsx` file and click **Attach
+file**. The first row names the columns; a `category` and an `expected_result` (or
+`Expected Result`) column are optional, and every other column is an input field. Up to 200
+rows. **Download data set (.csv)** saves the rows as `category`, the fields, then
+`expected_result`, in UTF-8 so Excel shows accented text, ready for a data-driven test
+runner or to fill in by hand and attach again. Values are kept exactly as written: a
+leading space, an empty cell or `-1` can be the value a row tests. Generating again or
+attaching a file replaces the rows of that case; **Remove data set** drops them.
+
+The rows stay with their test case while its test id is in the set, also after an accepted
+revision, and go into the history with the set the next time it is saved there (an
+accepted revision). Download the CSV to keep them.
 
 #### From a requirement file
 
@@ -418,6 +447,10 @@ application version. See [CHANGELOG.md](CHANGELOG.md) for changes and upload lim
   Ambiguous headers, malformed rows, and lazy Excel parsing errors produce
   import errors. Exported text, including generated/editor values and summary
   questions, stays literal even when it begins with a spreadsheet formula prefix.
+  A data set CSV holds values exactly as given, since a test runner reads them as input; a
+  value that starts with `=`, `+`, `-` or `@` (an injection test, say) can run as a formula
+  if you open the CSV straight in a spreadsheet app, so check the rows first or import the
+  file as text.
 - Page HTML/ARIA snapshots pasted on the Automation page are sent to
   the chosen AI provider (Anthropic by default) with the test cases; remove tokens and personal data first. The
   Heal Locators page sends the pasted error and snapshot the same way. The

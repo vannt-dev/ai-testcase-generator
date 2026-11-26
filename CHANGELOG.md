@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Test data sets** for data-driven testing. Under the Generator's table, pick a test case
+  and have the AI write a table of concrete data rows for it: one column per input field,
+  with Valid, Boundary and Invalid values and the expected result of each row (up to 30
+  rows; limits the requirement does not state are asked about). Or attach your own rows
+  from a `.csv`/`.xlsx` file (`category` and `expected_result` columns are optional, up to
+  200 rows). Download the rows as CSV. Values are kept exactly, including empty cells and
+  leading spaces. A reply that leaves out or invents a field attaches nothing. The rows
+  stay with their test case through table edits and accepted revisions. Works with every
+  AI provider.
+
 ## 0.8.1 - 2026-11-13
 
 - The generation history no longer leaks between people on a shared server, such as the live

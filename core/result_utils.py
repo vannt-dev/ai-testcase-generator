@@ -96,7 +96,7 @@ def build_edited_result(original_result: dict, test_cases: list[dict]) -> dict:
             by_type[type_key] += 1
 
     original_summary = original_result.get("summary", {})
-    return {
+    edited = {
         "acceptance_criteria": [
             dict(criterion) for criterion in original_result.get("acceptance_criteria", [])
         ],
@@ -108,3 +108,12 @@ def build_edited_result(original_result: dict, test_cases: list[dict]) -> dict:
         },
         "usage": dict(original_result.get("usage", {})),
     }
+    if "data_sets" in original_result:
+        # The data rows attached to a test case stay with it while its test id is in the set.
+        ids = {str(test_case.get("test_id") or "").strip() for test_case in test_cases}
+        edited["data_sets"] = {
+            test_id: data_set
+            for test_id, data_set in (original_result.get("data_sets") or {}).items()
+            if test_id in ids
+        }
+    return edited

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 - 2026-11-26
 
 - **Test data sets** for data-driven testing. Under the Generator's table, pick a test case
   and have the AI write a table of concrete data rows for it: one column per input field,
